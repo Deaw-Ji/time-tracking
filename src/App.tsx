@@ -949,7 +949,7 @@ export default function App() {
             <form className="space-y-4" onSubmit={handleLoginSubmit}>
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                  Username หรือ รหัสพนักงาน หรือ อีเมล
+                  Username
                 </label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
@@ -961,7 +961,7 @@ export default function App() {
                     autoFocus
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="ป้อน Username, รหัสพนักงาน (EMP-...) หรืออีเมล"
+                    placeholder="ป้อน Username"
                     className="block w-full pl-10 pr-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                   />
                 </div>
@@ -1253,6 +1253,7 @@ export default function App() {
             nowMs={nowMs}
             targetEfficiencyPct={targetEfficiencyPct}
             currentUserRole={currentUser.Role}
+            departments={departments}
             onOpenCreateJob={() => {
               setActiveTab('jobs');
               setIsCreateJobModalOpen(true);

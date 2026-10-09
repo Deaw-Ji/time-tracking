@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   SheetJob,
   SheetJobTask,
@@ -7,8 +7,9 @@ import {
   ActiveTechSession,
   TechnicianEfficiencyRow,
   UserRole,
-} from '../types/shopFloor';
-import { Play, Pause, CheckCircle2, ArrowUpRight, Clock, Users } from 'lucide-react';
+  MasterDepartment,
+} from "../types/shopFloor";
+import { Play, Pause, CheckCircle2, ArrowUpRight, Clock, Users } from "lucide-react";
 
 interface DashboardViewProps {
   jobs: SheetJob[];
@@ -19,9 +20,10 @@ interface DashboardViewProps {
   efficiencyRows: TechnicianEfficiencyRow[];
   nowMs: number;
   targetEfficiencyPct: number;
+  departments?: MasterDepartment[];
   onOpenCreateJob?: () => void;
   onSelectTechView: (techEmail: string) => void;
-  onNavigateTab: (tab: 'jobs' | 'tech' | 'efficiency' | 'sheets') => void;
+  onNavigateTab: (tab: "jobs" | "tech" | "efficiency" | "sheets") => void;
   currentUserRole?: UserRole;
 }
 
@@ -30,7 +32,7 @@ export function formatClockFromSeconds(totalSeconds: number): string {
   const hrs = Math.floor(safe / 3600);
   const mins = Math.floor((safe % 3600) / 60);
   const secs = safe % 60;
-  return [hrs, mins, secs].map((n) => (n < 10 ? `0${n}` : `${n}`)).join(':');
+  return [hrs, mins, secs].map((n) => (n < 10 ? `0${n}` : `${n}`)).join(":");
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -42,26 +44,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   efficiencyRows,
   nowMs,
   targetEfficiencyPct,
+  departments = [],
   onOpenCreateJob,
   onSelectTechView,
   onNavigateTab,
   currentUserRole,
 }) => {
-  // Filter out any invalid tasks, demo jobs, or tasks without a valid existing Job
   const validTasks = jobTasks.filter(
     (t) =>
       t &&
       t.TaskID &&
-      !t.TaskID.startsWith('EMP-') &&
-      !t.JobID.includes('@') &&
-      t.TaskName !== '123' &&
-      t.TaskName !== 'admin123' &&
-      !['JOB-2610-001', 'JOB-2610-002', 'JOB-2610-003'].includes(t.JobID) &&
+      !t.TaskID.startsWith("EMP-") &&
+      !t.JobID.includes("@") &&
+      t.TaskName !== "123" &&
+      t.TaskName !== "admin123" &&
+      !["JOB-2610-001", "JOB-2610-002", "JOB-2610-003"].includes(t.JobID) &&
       jobs.some((j) => j.JobID === t.JobID)
   );
-  const inProgressTasks = validTasks.filter((t) => t.Status === 'In Progress');
-  const pausedTasks = validTasks.filter((t) => t.Status === 'Paused');
-  const completedTasks = validTasks.filter((t) => t.Status === 'Completed');
+
+  const inProgressTasks = validTasks.filter((t) => t.Status === "In Progress");
+  const pausedTasks = validTasks.filter((t) => t.Status === "Paused");
+  const completedTasks = validTasks.filter((t) => t.Status === "Completed");
 
   const avgUtilization =
     efficiencyRows.length > 0
@@ -84,18 +87,129 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const getTechName = (email: string) => {
     const clean = email.trim().toLowerCase();
     const u = users.find((item) => item.Email.toLowerCase() === clean);
-    return u ? (u.Nickname || u.Name) : email.split('@')[0];
+    return u ? (u.Nickname || u.Name) : email.split("@")[0];
   };
 
   const getLatestPauseReason = (taskId: string): string => {
-    const logs = timeLogs.filter((l) => l.TaskID === taskId && l.Action === 'PAUSE');
-    if (logs.length === 0) return 'หยุดพักชั่วคราว';
-    return logs[logs.length - 1].Note || 'หยุดพักชั่วคราว';
+    const logs = timeLogs.filter((l) => l.TaskID === taskId && l.Action === "PAUSE");
+    if (logs.length === 0) return "หยุดพักชั่วคราว";
+    return logs[logs.length - 1].Note || "หยุดพักชั่วคราว";
+  };
+
+  const activeTechs = users.filter((u) => u.Role === "Technician" && u.Status === "Active");
+
+  const departmentGroups: { deptName: string; description?: string; techs: SheetUser[] }[] = [];
+  const assignedTechIds = new Set<string>();
+
+  if (departments.length > 0) {
+    departments.forEach((dept) => {
+      const matchedTechs = activeTechs.filter(
+        (t) => (t.Department || "").trim().toLowerCase() === dept.name.trim().toLowerCase()
+      );
+      matchedTechs.forEach((t) => assignedTechIds.add(t.UserID));
+      if (matchedTechs.length > 0) {
+        departmentGroups.push({
+          deptName: dept.name,
+          description: dept.description,
+          techs: matchedTechs,
+        });
+      }
+    });
+
+    const unassignedTechs = activeTechs.filter((t) => !assignedTechIds.has(t.UserID));
+    if (unassignedTechs.length > 0) {
+      departmentGroups.push({
+        deptName: "อื่นๆ / ไม่ระบุแผนก (Other)",
+        description: "ช่างที่ยังไม่ได้ระบุสังกัดแผนกในระบบ",
+        techs: unassignedTechs,
+      });
+    }
+  } else {
+    departmentGroups.push({
+      deptName: "ช่างซ่อมทั้งหมดในอู่",
+      techs: activeTechs,
+    });
+  }
+
+  const renderTechRow = (tech: SheetUser) => {
+    const session = activeSessions.find(
+      (s) => s.TechEmail.toLowerCase() === tech.Email.toLowerCase()
+    );
+    const activeTask = session
+      ? jobTasks.find((t) => t.TaskID === session.TaskID)
+      : undefined;
+    const activeJob = activeTask
+      ? jobs.find((j) => j.JobID === activeTask.JobID)
+      : undefined;
+    const currentRunSeconds = session
+      ? Math.max(0, Math.floor((nowMs - new Date(session.StartTimestamp).getTime()) / 1000))
+      : 0;
+    const assignedCount = jobTasks.filter((t) =>
+      t.AssignedTechs.toLowerCase().includes(tech.Email.toLowerCase())
+    ).length;
+
+    return (
+      <div
+        key={tech.UserID}
+        className="px-5 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors"
+      >
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-bold text-slate-900">{tech.Name}</span>
+            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-sm">
+              {tech.Nickname}
+            </span>
+            <span className="text-slate-400">·</span>
+            <span className="text-xs text-slate-600 font-medium">{tech.Department || "ไม่ระบุแผนก"}</span>
+            <span className="text-slate-400">·</span>
+            <span className="text-xs font-mono text-slate-500">{tech.Email}</span>
+          </div>
+          {session && activeTask ? (
+            <div className="text-xs text-slate-700 flex flex-wrap items-center gap-1.5">
+              <Play className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600 shrink-0" />
+              <span className="font-semibold text-emerald-700">กำลังทำงาน:</span>
+              <span className="font-mono font-semibold text-slate-900">
+                {activeTask.TaskID}
+              </span>
+              <span>({activeJob?.LicensePlate || activeTask.JobID})</span>
+              <span>—</span>
+              <span className="font-semibold text-slate-900">{activeTask.TaskName}</span>
+            </div>
+          ) : (
+            <div className="text-xs text-slate-400">
+              สถานะ: ว่าง / รอดึงงานเข้าแผนก · ถือครองคิวงานทั้งหมด {assignedCount} งาน
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-between lg:justify-end gap-5">
+          {session ? (
+            <div className="text-right">
+              <div className="text-[10px] text-slate-500 font-semibold uppercase">เวลาช่วงที่บันทึกอยู่</div>
+              <div className="text-lg font-bold font-mono tabular-nums text-emerald-600">
+                {formatClockFromSeconds(currentRunSeconds)}
+              </div>
+            </div>
+          ) : (
+            <div className="text-right">
+              <div className="text-[10px] text-slate-400">เวลารอบปัจจุบัน</div>
+              <div className="text-lg font-mono tabular-nums text-slate-400">00:00:00</div>
+            </div>
+          )}
+          {currentUserRole === "Admin" && (
+            <button
+              onClick={() => onSelectTechView(tech.Email)}
+              className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+            >
+              เปิด Technician Board
+            </button>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
     <div className="space-y-8 animate-fadeIn">
-      {/* Header Banner */}
       <div className="border-b border-slate-200 pb-5">
         <p className="text-xs font-semibold text-blue-600 tracking-wider uppercase">
           Time Tracking Control System
@@ -105,7 +219,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </h1>
       </div>
 
-      {/* Top KPI Strip - Single Elevation */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
           <div className="text-xs font-semibold text-slate-500">ใบงานซ่อมทั้งหมด (Jobs)</div>
@@ -118,8 +231,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </span>
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-600">
-            กำลังทำสี {jobs.filter((j) => j.Status === 'In Progress').length} คัน · รออะไหล่{' '}
-            {jobs.filter((j) => j.Status === 'Paused').length} คัน
+            กำลังทำสี {jobs.filter((j) => j.Status === "In Progress").length} คัน · รออะไหล่{" "}
+            {jobs.filter((j) => j.Status === "Paused").length} คัน
           </div>
         </div>
 
@@ -151,7 +264,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-600 truncate">
             {pausedTasks.length > 0
               ? `ล่าสุด: ${getLatestPauseReason(pausedTasks[0].TaskID)}`
-              : 'อู่สีโฟลว์คล่องตัว ไม่มีงานพักค้าง'}
+              : "อู่สีโฟลว์คล่องตัว ไม่มีงานพักค้าง"}
           </div>
         </div>
 
@@ -160,7 +273,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="mt-2 flex items-baseline justify-between">
             <span
               className={`text-3xl font-bold font-mono tabular-nums ${
-                avgTaskEff >= targetEfficiencyPct ? 'text-blue-600' : 'text-amber-600'
+                avgTaskEff >= targetEfficiencyPct ? "text-blue-600" : "text-amber-600"
               }`}
             >
               {avgTaskEff}%
@@ -170,27 +283,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </span>
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-600">
-            อัตราลงเวลาช่างในแผนก:{' '}
+            อัตราลงเวลาช่างในแผนก:{" "}
             <strong className="font-mono tabular-nums text-slate-900">{avgUtilization}%</strong>
           </div>
         </div>
       </div>
 
-      {/* Active Technician Live Sessions Monitor */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
         <div className="px-5 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h2 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
               <Users className="w-4 h-4 text-blue-600" />
-              สถานะช่างประจำช่องซ่อมสี Real-time (Technician Live Monitor)
+              สถานะช่างประจำช่องซ่อมสี Real-time (Technician Live Monitor - เรียงตามแผนก)
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              ติดตามชั่วโมงการจดบันทึกเวลาของช่างซ่อมตัวถังและช่างเตรียมพื้นผิวแต่ละคนในขณะนี้
+              ติดตามชั่วโมงการจดบันทึกเวลาของช่างซ่อมตัวถังและช่างเตรียมพื้นผิวแต่ละคน แยกตามแผนกในอู่
             </p>
           </div>
-          {currentUserRole === 'Admin' && (
+          {currentUserRole === "Admin" && (
             <button
-              onClick={() => onNavigateTab('efficiency')}
+              onClick={() => onNavigateTab("efficiency")}
               className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
             >
               ดูสถิติแยกรายบุคคล
@@ -200,93 +312,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         <div className="divide-y divide-slate-100">
-          {users
-            .filter((u) => u.Role === 'Technician' && u.Status === 'Active')
-            .map((tech) => {
-              const session = activeSessions.find(
-                (s) => s.TechEmail.toLowerCase() === tech.Email.toLowerCase()
-              );
-              const activeTask = session
-                ? jobTasks.find((t) => t.TaskID === session.TaskID)
-                : undefined;
-              const activeJob = activeTask
-                ? jobs.find((j) => j.JobID === activeTask.JobID)
-                : undefined;
-
-              const currentRunSeconds = session
-                ? Math.max(0, Math.floor((nowMs - new Date(session.StartTimestamp).getTime()) / 1000))
-                : 0;
-
-              const assignedCount = jobTasks.filter((t) =>
-                t.AssignedTechs.toLowerCase().includes(tech.Email.toLowerCase())
-              ).length;
-
-              return (
-                <div
-                  key={tech.UserID}
-                  className="px-5 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="font-bold text-slate-900">{tech.Name}</span>
-                      <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-sm">
-                        {tech.Nickname}
-                      </span>
-                      <span className="text-slate-400">·</span>
-                      <span className="text-xs text-slate-600">{tech.Department}</span>
-                      <span className="text-slate-400">·</span>
-                      <span className="text-xs font-mono text-slate-500">{tech.Email}</span>
-                    </div>
-
-                    {session && activeTask ? (
-                      <div className="text-xs text-slate-700 flex flex-wrap items-center gap-1.5">
-                        <Play className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600 shrink-0" />
-                        <span className="font-semibold text-emerald-700">กำลังทำงาน:</span>
-                        <span className="font-mono font-semibold text-slate-900">
-                          {activeTask.TaskID}
-                        </span>
-                        <span>({activeJob?.LicensePlate || activeTask.JobID})</span>
-                        <span>—</span>
-                        <span className="font-semibold text-slate-900">{activeTask.TaskName}</span>
-                      </div>
-                    ) : (
-                      <div className="text-xs text-slate-400">
-                        สถานะ: ว่าง / รอดึงงานเข้าแผนก · ถือครองคิวงานทั้งหมด {assignedCount} แผนก Sops
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between lg:justify-end gap-5">
-                    {session ? (
-                      <div className="text-right">
-                        <div className="text-[10px] text-slate-500 font-semibold uppercase">เวลาช่วงที่บันทึกอยู่</div>
-                        <div className="text-lg font-bold font-mono tabular-nums text-emerald-600">
-                          {formatClockFromSeconds(currentRunSeconds)}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-right">
-                        <div className="text-[10px] text-slate-400">เวลารอบปัจจุบัน</div>
-                        <div className="text-lg font-mono tabular-nums text-slate-400">00:00:00</div>
-                      </div>
-                    )}
-
-                    {currentUserRole === 'Admin' && (
-                      <button
-                        onClick={() => onSelectTechView(tech.Email)}
-                        className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer"
-                      >
-                        เปิด Technician Board
-                      </button>
-                    )}
-                  </div>
+          {departmentGroups.map((group, groupIdx) => (
+            <div key={groupIdx} className="bg-white">
+              <div className="bg-slate-50 border-y border-slate-200 px-5 py-2.5 flex items-center justify-between text-xs font-bold text-slate-700">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                  <span className="uppercase tracking-wider text-slate-900">{group.deptName}</span>
+                  {group.description && (
+                    <span className="font-normal text-slate-500 hidden sm:inline">
+                      — {group.description}
+                    </span>
+                  )}
                 </div>
-              );
-            })}
+                <div className="text-slate-600 font-mono bg-white px-2.5 py-0.5 rounded border border-slate-200 shadow-2xs">
+                  ช่างในแผนกนี้: {group.techs.length} คน
+                </div>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {group.techs.length > 0 ? (
+                  group.techs.map((tech) => renderTechRow(tech))
+                ) : (
+                  <div className="px-5 py-4 text-xs text-slate-400 italic">
+                    ไม่มีช่างประจำในแผนกนี้
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Live SOP Subtasks Grid List */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
         <div className="px-5 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
@@ -298,14 +354,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </p>
           </div>
           <button
-            onClick={() => onNavigateTab('jobs')}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800"
+            onClick={() => onNavigateTab("jobs")}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 cursor-pointer"
           >
             จัดการใบงานทั้งหมด
             <ArrowUpRight className="w-3.5 h-3.5" />
           </button>
         </div>
-
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -318,124 +373,121 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <th className="py-3 px-4 text-right">เวลาสะสมจริง (Real-time)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {validTasks.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400 font-medium">
-                    ยังไม่มีขั้นตอนงานในระบบ (สามารถกดปุ่ม "จัดการใบงานทั้งหมด" เพื่อเปิดใบงาน)
-                  </td>
-                </tr>
-              ) : (
-                validTasks.map((task) => {
-                const job = jobs.find((j) => j.JobID === task.JobID);
-                const taskRunningSessions = activeSessions.filter((s) => s.TaskID === task.TaskID);
-                const extraLiveSeconds = taskRunningSessions.reduce((sum, s) => {
-                  return sum + Math.max(0, Math.floor((nowMs - new Date(s.StartTimestamp).getTime()) / 1000));
-                }, 0);
-                const totalLiveSeconds = task.TotalMinutes * 60 + extraLiveSeconds;
+            <tbody className="divide-y divide-slate-100 text-xs">
+              {validTasks.slice(0, 50).map((task) => {
+                const j = jobs.find((item) => item.JobID === task.JobID);
+                const taskLogs = timeLogs.filter((l) => l.TaskID === task.TaskID);
+                let totalSec = 0;
+                let activeStart: string | null = null;
+                taskLogs.forEach((log) => {
+                  if (log.Action === "START") {
+                    activeStart = log.Timestamp;
+                  } else if ((log.Action === "PAUSE" || log.Action === "COMPLETE") && activeStart) {
+                    totalSec += Math.max(
+                      0,
+                      Math.floor(
+                        (new Date(log.Timestamp).getTime() - new Date(activeStart).getTime()) / 1000
+                      )
+                    );
+                    activeStart = null;
+                  }
+                });
+                if (activeStart && task.Status === "In Progress") {
+                  totalSec += Math.max(
+                    0,
+                    Math.floor((nowMs - new Date(activeStart).getTime()) / 1000)
+                  );
+                }
 
-                const techNames = task.AssignedTechs.split(',')
-                  .map((e) => e.trim())
-                  .filter(Boolean)
-                  .map(getTechName)
-                  .join(' · ');
+                const techNames = task.AssignedTechs
+                  ? task.AssignedTechs
+                      .split(",")
+                      .map((e: string) => getTechName(e))
+                      .join(", ")
+                  : "-";
 
-                // Parse parts checklist
                 const checklistItems = task.PartsChecklist
-                  ? task.PartsChecklist.split(',').map((item) => {
-                      const [name, state] = item.split(':');
-                      return { name, done: state === 'done' };
+                  ? task.PartsChecklist.split("||").map((item: string) => {
+                      const parts = item.split("::");
+                      return { text: parts[0] || "", done: parts[1] === "true" };
                     })
                   : [];
-
-                const doneCount = checklistItems.filter((i) => i.done).length;
+                const completedChecklistCount = checklistItems.filter((ci: { text: string; done: boolean }) => ci.done).length;
 
                 return (
-                  <tr key={task.TaskID} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      <div className="font-mono text-xs font-bold text-slate-900">
-                        {task.TaskID} · {task.JobID}
+                  <tr key={task.TaskID} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="py-3 px-4 align-top">
+                      <div className="font-bold text-slate-900 font-mono">
+                        {j?.LicensePlate || task.JobID}
                       </div>
-                      <div className="text-xs text-slate-600 font-semibold mt-0.5">
-                        {job ? job.LicensePlate : '-'}
-                      </div>
-                      <div className="text-[10px] text-slate-400 mt-0.5">
-                        {job ? job.CustomerName : '-'}
-                      </div>
+                      <div className="text-[11px] text-slate-500 font-mono">{task.JobID}</div>
                     </td>
-                    <td className="py-3.5 px-4">
-                      <div className="font-bold text-slate-800 text-sm">{task.TaskName}</div>
-                      <div className="text-xs text-slate-500 mt-0.5">
-                        เวลามาตรฐาน: {task.StandardMinutes} นาที
-                      </div>
+                    <td className="py-3 px-4 align-top">
+                      <div className="font-semibold text-slate-900">{task.TaskName}</div>
+                      <div className="text-[11px] text-slate-500 font-mono">{task.TaskID}</div>
                     </td>
-                    <td className="py-3.5 px-4">
+                    <td className="py-3 px-4 align-top">
                       {checklistItems.length > 0 ? (
-                        <div className="space-y-1.5 max-w-xs">
-                          <div className="flex flex-wrap gap-1">
-                            {checklistItems.map((item, idx) => (
+                        <div>
+                          <div className="text-slate-800 font-medium">
+                            ทำแล้ว {completedChecklistCount} / {checklistItems.length} ชิ้นส่วน
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+                            {checklistItems.map((ci: { text: string; done: boolean }) => (
                               <span
-                                key={idx}
-                                className={`text-[10px] px-1.5 py-0.5 rounded-sm border font-medium ${
-                                  item.done
-                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                                    : 'bg-slate-50 border-slate-200 text-slate-600'
+                                key={ci.text}
+                                className={`inline-block mr-1.5 px-1.5 py-0.5 rounded text-[10px] ${
+                                  ci.done
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                    : "bg-slate-100 text-slate-600"
                                 }`}
                               >
-                                {item.name} {item.done ? '✓' : ''}
+                                {ci.text} {ci.done ? "✓" : ""}
                               </span>
                             ))}
                           </div>
-                          <div className="text-[10px] text-slate-500">
-                            ความสำเร็จรายชิ้นส่วน: {doneCount} / {checklistItems.length} ชิ้น ({Math.round((doneCount / checklistItems.length) * 100)}%)
-                          </div>
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400">ไม่ได้ระบุชิ้นส่วน</span>
+                        <span className="text-slate-400">ไม่มี Checklist รายชิ้น</span>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 text-xs font-semibold text-slate-700">{techNames}</td>
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      {task.Status === 'In Progress' && (
-                        <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700">
-                          <Play className="w-3.5 h-3.5 fill-emerald-600 text-emerald-600" />
-                          In Progress
-                        </span>
-                      )}
-                      {task.Status === 'Paused' && (
-                        <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700">
-                          <Pause className="w-3.5 h-3.5 text-amber-600" />
-                          Paused
-                        </span>
-                      )}
-                      {task.Status === 'Completed' && (
-                        <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-700">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-                          Completed
-                        </span>
-                      )}
-                      {task.Status === 'Pending' && (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500">
-                          <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          Pending
-                        </span>
-                      )}
+                    <td className="py-3 px-4 align-top font-medium text-slate-700">
+                      {techNames}
                     </td>
-                    <td className="py-3.5 px-4 text-right font-mono tabular-nums whitespace-nowrap">
-                      <div
-                        className={`text-sm font-bold ${
-                          taskRunningSessions.length > 0 ? 'text-emerald-600 animate-pulse' : 'text-slate-900'
+                    <td className="py-3 px-4 align-top">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${
+                          task.Status === "In Progress"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : task.Status === "Paused"
+                            ? "bg-amber-100 text-amber-800"
+                            : task.Status === "Completed"
+                            ? "bg-blue-100 text-blue-800"
+                            : "bg-slate-100 text-slate-700"
                         }`}
                       >
-                        {formatClockFromSeconds(totalLiveSeconds)}
-                      </div>
-                      <div className="text-[10px] text-slate-400">
-                        จดแล้ว {task.TotalMinutes} นาที
-                      </div>
+                        {task.Status === "In Progress"
+                          ? "กำลังทำสีอยู่"
+                          : task.Status === "Paused"
+                          ? "พักงาน (รออะไหล่/คิว)"
+                          : task.Status === "Completed"
+                          ? "เสร็จแล้ว"
+                          : task.Status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 align-top text-right font-mono font-bold tabular-nums text-slate-900">
+                      {formatClockFromSeconds(totalSec)}
                     </td>
                   </tr>
                 );
-              }))}
+              })}
+              {validTasks.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                    ยังไม่มีข้อมูลขั้นตอนการทำสีในระบบ
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
