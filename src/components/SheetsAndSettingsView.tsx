@@ -28,6 +28,7 @@ import {
   AlertCircle,
   Flame,
   Cloud,
+  Moon,
 } from 'lucide-react';
 
 export type SheetTabName =
@@ -101,6 +102,10 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
     return initialSubTab;
   });
   const [draftSettings, setDraftSettings] = useState<SheetSetting[]>(settings);
+
+  useEffect(() => {
+    setDraftSettings(settings);
+  }, [settings]);
 
   useEffect(() => {
     if (initialSubTab) {
@@ -1951,7 +1956,95 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
           onSubmit={handleSaveSettings}
           className="bg-white border border-slate-200 rounded-xl p-5 space-y-4 shadow-xs"
         >
-          <div className="text-sm font-bold text-slate-900">การตั้งค่าตัวแปรระบบอู่สี</div>
+          {/* Featured Card: Night Auto-Cutoff */}
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-xl p-5 shadow-xs border border-indigo-800/50 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shrink-0">
+                  <Moon className="w-5 h-5 text-indigo-300" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                    ระบบตัดพักงานรอบดึกอัตโนมัติ (Night Auto-Cutoff)
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2 py-0.5 rounded-full font-semibold">
+                      ทำงานอัตโนมัติ
+                    </span>
+                  </h3>
+                  <p className="text-xs text-indigo-200/80 mt-0.5">
+                    ป้องกันปัญหาช่างลืมกดหยุดงานและเวลาเดินข้ามคืน ระบบจะตัดหยุดงานที่เวลาที่กำหนดและนับเวลาสะสมถึงจุดตัดรอบพอดี
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-indigo-800/40 text-xs">
+              <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+                <label className="block text-[11px] text-indigo-200 mb-1 font-semibold">
+                  เปิด/ปิด ระบบตัดรอบดึก (Enabled)
+                </label>
+                <select
+                  value={
+                    draftSettings.find((s) => s.ConfigKey === 'NIGHT_AUTO_CUTOFF_ENABLED')?.ConfigValue || 'TRUE'
+                  }
+                  onChange={(e) => {
+                    const next = [...draftSettings];
+                    const idx = next.findIndex((s) => s.ConfigKey === 'NIGHT_AUTO_CUTOFF_ENABLED');
+                    if (idx >= 0) next[idx].ConfigValue = e.target.value;
+                    else next.push({ ConfigKey: 'NIGHT_AUTO_CUTOFF_ENABLED', ConfigValue: e.target.value, Description: 'ระบบตัดพักงานอัตโนมัติรอบดึกกรณีช่างลืมกดหยุด (TRUE / FALSE)' });
+                    setDraftSettings(next);
+                  }}
+                  className="w-full bg-slate-900 border border-indigo-500/40 rounded px-2.5 py-1.5 text-xs text-white font-bold cursor-pointer"
+                >
+                  <option value="TRUE">เปิดใช้งาน (TRUE - แนะนำ)</option>
+                  <option value="FALSE">ปิดใช้งาน (FALSE)</option>
+                </select>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+                <label className="block text-[11px] text-indigo-200 mb-1 font-semibold">
+                  เวลาตัดพักงานอัตโนมัติ (HH:mm)
+                </label>
+                <input
+                  type="text"
+                  value={
+                    draftSettings.find((s) => s.ConfigKey === 'NIGHT_AUTO_CUTOFF_TIME')?.ConfigValue || '23:00'
+                  }
+                  onChange={(e) => {
+                    const next = [...draftSettings];
+                    const idx = next.findIndex((s) => s.ConfigKey === 'NIGHT_AUTO_CUTOFF_TIME');
+                    if (idx >= 0) next[idx].ConfigValue = e.target.value;
+                    else next.push({ ConfigKey: 'NIGHT_AUTO_CUTOFF_TIME', ConfigValue: e.target.value, Description: 'เวลาตัดพักงานรอบดึกอัตโนมัติประจำวัน (HH:mm เช่น 23:00)' });
+                    setDraftSettings(next);
+                  }}
+                  placeholder="23:00"
+                  className="w-full bg-slate-900 border border-indigo-500/40 rounded px-2.5 py-1.5 text-xs font-mono font-bold text-white text-center"
+                />
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+                <label className="block text-[11px] text-indigo-200 mb-1 font-semibold">
+                  สาเหตุที่บันทึกอัตโนมัติ (Reason Note)
+                </label>
+                <input
+                  type="text"
+                  value={
+                    draftSettings.find((s) => s.ConfigKey === 'NIGHT_AUTO_CUTOFF_REASON')?.ConfigValue || 'ลืมกดหยุด'
+                  }
+                  onChange={(e) => {
+                    const next = [...draftSettings];
+                    const idx = next.findIndex((s) => s.ConfigKey === 'NIGHT_AUTO_CUTOFF_REASON');
+                    if (idx >= 0) next[idx].ConfigValue = e.target.value;
+                    else next.push({ ConfigKey: 'NIGHT_AUTO_CUTOFF_REASON', ConfigValue: e.target.value, Description: 'สาเหตุการพักงานเมื่อระบบตัดรอบดึกอัตโนมัติ' });
+                    setDraftSettings(next);
+                  }}
+                  placeholder="ลืมกดหยุด"
+                  className="w-full bg-slate-900 border border-indigo-500/40 rounded px-2.5 py-1.5 text-xs text-white font-medium"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="text-sm font-bold text-slate-900 pt-2 border-t border-slate-200">การตั้งค่าตัวแปรระบบอู่สีทั่วไป</div>
           <div className="space-y-3">
             {draftSettings.map((item, index) => (
               <div

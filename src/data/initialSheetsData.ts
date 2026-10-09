@@ -137,8 +137,23 @@ export const INITIAL_SETTINGS: SheetSetting[] = [
     Description: 'เมื่อช่างคนเดิมกด START งานหลักขั้นตอนใหม่ ให้ระบบพักจับเวลางานเดิมอัตโนมัติ',
   },
   {
+    ConfigKey: 'NIGHT_AUTO_CUTOFF_ENABLED',
+    ConfigValue: 'TRUE',
+    Description: 'ระบบตัดพักงานอัตโนมัติรอบดึกกรณีช่างลืมกดหยุด (TRUE / FALSE)',
+  },
+  {
+    ConfigKey: 'NIGHT_AUTO_CUTOFF_TIME',
+    ConfigValue: '23:00',
+    Description: 'เวลาตัดพักงานรอบดึกอัตโนมัติประจำวัน (HH:mm เช่น 23:00)',
+  },
+  {
+    ConfigKey: 'NIGHT_AUTO_CUTOFF_REASON',
+    ConfigValue: 'ลืมกดหยุด',
+    Description: 'สาเหตุการพักงานเมื่อระบบตัดรอบดึกอัตโนมัติ',
+  },
+  {
     ConfigKey: 'PAUSE_REASONS',
-    ConfigValue: 'รออะไหล่/รอชิ้นงาน, รอลูกค้าอนุมัติเพิ่ม, พักเที่ยง/พักเบรก, งานแทรกเร่งด่วน, ตู้อบสีไม่ว่าง, รอสีแห้งหมาด, อื่นๆ',
+    ConfigValue: 'รออะไหล่/รอชิ้นงาน, รอลูกค้าอนุมัติเพิ่ม, พักเที่ยง/พักเบรก, งานแทรกเร่งด่วน, ตู้อบสีไม่ว่าง, รอสีแห้งหมาด, ลืมกดหยุด, อื่นๆ',
     Description: 'รายการสาเหตุการกดหยุดพักจับเวลาหน้างานซ่อมสีรถยนต์',
   },
 ];

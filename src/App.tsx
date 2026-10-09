@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   SheetUser,
   SheetJob,
@@ -286,7 +286,15 @@ export default function App() {
         setWorkCalendar(newCalendar);
       },
       onSettingsChange: (newSettings) => {
-        setSettings(newSettings);
+        const existingKeys = new Set(newSettings.map((s) => s.ConfigKey));
+        const missing = INITIAL_SETTINGS.filter((s) => !existingKeys.has(s.ConfigKey));
+        if (missing.length > 0) {
+          const merged = [...newSettings, ...missing];
+          setSettings(merged);
+          saveSettingsToFirestore(missing).catch((e) => console.error("Auto-seed missing settings error:", e));
+        } else {
+          setSettings(newSettings);
+        }
       },
       onCarPartsChange: (newParts) => {
         setCarParts(newParts);
@@ -752,6 +760,142 @@ export default function App() {
 
     showToast('คืนค่าฐานข้อมูลสู่มาตรฐานโรงงานเสร็จสมบูรณ์');
   };
+
+  // Automated Night Cutoff to Auto-Pause any active sessions running past the cutoff time (e.g. 23:00)
+  const checkAndApplyNightAutoCutoff = useCallback(() => {
+    const cutoffEnabledCfg = settings.find((s) => s.ConfigKey === 'NIGHT_AUTO_CUTOFF_ENABLED');
+    const isEnabled = !cutoffEnabledCfg || cutoffEnabledCfg.ConfigValue.trim().toUpperCase() === 'TRUE';
+    if (!isEnabled) return;
+
+    const cutoffTimeCfg = settings.find((s) => s.ConfigKey === 'NIGHT_AUTO_CUTOFF_TIME');
+    const cutoffTimeStr = cutoffTimeCfg?.ConfigValue?.trim() || '23:00';
+    const [cutoffHourStr, cutoffMinuteStr] = cutoffTimeStr.split(':');
+    const cutoffHour = parseInt(cutoffHourStr, 10) || 23;
+    const cutoffMinute = parseInt(cutoffMinuteStr, 10) || 0;
+
+    const cutoffReasonCfg = settings.find((s) => s.ConfigKey === 'NIGHT_AUTO_CUTOFF_REASON');
+    const cutoffReasonBase = cutoffReasonCfg?.ConfigValue?.trim() || 'ลืมกดหยุด';
+
+    const currentMs = Date.now();
+    const currentActive = computeActiveSessions(timeLogs);
+    if (currentActive.length === 0) return;
+
+    const sessionsToCutoff: {
+      session: ActiveTechSession;
+      cutoffIso: string;
+      durationMinutes: number;
+      task: SheetJobTask;
+    }[] = [];
+
+    currentActive.forEach((sess) => {
+      const startDate = new Date(sess.StartTimestamp);
+      if (isNaN(startDate.getTime())) return;
+
+      const sessionCutoff = new Date(startDate);
+      sessionCutoff.setHours(cutoffHour, cutoffMinute, 0, 0);
+
+      let targetCutoff = sessionCutoff;
+      if (startDate.getTime() >= sessionCutoff.getTime()) {
+        targetCutoff = new Date(sessionCutoff.getTime() + 24 * 60 * 60 * 1000);
+      }
+
+      if (currentMs >= targetCutoff.getTime()) {
+        const durationMinutes = Math.max(
+          1,
+          Math.round((targetCutoff.getTime() - startDate.getTime()) / 60000)
+        );
+        const task = jobTasks.find((t) => t.TaskID === sess.TaskID);
+        if (task) {
+          sessionsToCutoff.push({
+            session: sess,
+            cutoffIso: targetCutoff.toISOString(),
+            durationMinutes,
+            task,
+          });
+        }
+      }
+    });
+
+    if (sessionsToCutoff.length === 0) return;
+
+    let updatedLogs = [...timeLogs];
+    const affectedJobIds = new Set<string>();
+    const pausedTechNames: string[] = [];
+
+    sessionsToCutoff.forEach((item, idx) => {
+      const newLogId = `LOG-${String(updatedLogs.length + idx + 1).padStart(4, '0')}`;
+      const note = `ระบบหยุดให้อัตโนมัติเวลา ${cutoffTimeStr} น. (${cutoffReasonBase})`;
+      const autoPauseLog: SheetTimeLog = {
+        LogID: newLogId,
+        TaskID: item.session.TaskID,
+        TechEmail: item.session.TechEmail.toLowerCase(),
+        Action: 'PAUSE',
+        Timestamp: item.cutoffIso,
+        DurationMinutes: item.durationMinutes,
+        Note: note,
+      };
+      updatedLogs.push(autoPauseLog);
+      saveTimeLogToFirestore(autoPauseLog).catch((e) => console.error('Save auto-cutoff log error:', e));
+
+      const u = users.find((user) => user.Email.toLowerCase() === item.session.TechEmail.toLowerCase());
+      pausedTechNames.push(u ? (u.Nickname || u.Name) : item.session.TechEmail.split('@')[0]);
+
+      affectedJobIds.add(item.task.JobID);
+    });
+
+    const remainingSessions = computeActiveSessions(updatedLogs);
+
+    const updatedTasks = jobTasks.map((t) => {
+      const taskTotalMinutes = updatedLogs
+        .filter((l) => l.TaskID === t.TaskID)
+        .reduce((sum, l) => sum + (Number(l.DurationMinutes) || 0), 0);
+      const isStillRunning = remainingSessions.some((s) => s.TaskID === t.TaskID);
+      const wasRunning = currentActive.some((s) => s.TaskID === t.TaskID);
+      let nextStatus = t.Status;
+      if (wasRunning && !isStillRunning && t.Status === 'In Progress') {
+        nextStatus = 'Paused';
+      }
+      const updatedT: SheetJobTask = {
+        ...t,
+        TotalMinutes: taskTotalMinutes,
+        Status: nextStatus,
+      };
+      if (nextStatus !== t.Status || taskTotalMinutes !== t.TotalMinutes) {
+        saveJobTaskToFirestore(updatedT).catch((e) => console.error('Auto-cutoff update task error:', e));
+      }
+      return updatedT;
+    });
+
+    const updatedJobs = jobs.map((j) => {
+      if (!affectedJobIds.has(j.JobID)) return j;
+      const siblingTasks = updatedTasks.filter((t) => t.JobID === j.JobID);
+      const allCompleted = siblingTasks.length > 0 && siblingTasks.every((t) => t.Status === 'Completed');
+      const anyInProgress = siblingTasks.some((t) => t.Status === 'In Progress');
+      const anyPaused = siblingTasks.some((t) => t.Status === 'Paused');
+      let jobStatus: JobStatus = 'Open';
+      if (allCompleted) jobStatus = 'Completed';
+      else if (anyInProgress) jobStatus = 'In Progress';
+      else if (anyPaused) jobStatus = 'Paused';
+      const updatedJ: SheetJob = { ...j, Status: jobStatus };
+      if (jobStatus !== j.Status) {
+        saveJobToFirestore(updatedJ).catch((e) => console.error('Auto-cutoff update job error:', e));
+      }
+      return updatedJ;
+    });
+
+    setTimeLogs(updatedLogs);
+    setJobTasks(updatedTasks);
+    setJobs(updatedJobs);
+
+    showToast(
+      `ระบบ Auto-Cutoff เวลา ${cutoffTimeStr} น. พักงานช่าง ${pausedTechNames.join(', ')} อัตโนมัติ (${cutoffReasonBase})`
+    );
+  }, [settings, timeLogs, jobTasks, jobs, users, showToast]);
+
+  // Periodic automatic check for night cutoff
+  useEffect(() => {
+    checkAndApplyNightAutoCutoff();
+  }, [nowMs, checkAndApplyNightAutoCutoff]);
 
   // Handler: Record Time Action (START, PAUSE, COMPLETE) with live Firebase persistence
   const handleRecordTimeAction = (
