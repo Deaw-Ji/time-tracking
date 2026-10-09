@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Workshop application collections
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    match /jobs/{jobId} {
+      allow read, write: if true;
+    }
+
+    match /jobTasks/{taskId} {
+      allow read, write: if true;
+    }
+
+    match /timeLogs/{logId} {
+      allow read, write: if true;
+    }
+
+    match /workCalendar/{calendarId} {
+      allow read, write: if true;
+    }
+
+    match /techLeaves/{leaveId} {
+      allow read, write: if true;
+    }
+
+    match /settings/{settingId} {
+      allow read, write: if true;
+    }
+
+    match /carParts/{partId} {
+      allow read, write: if true;
+    }
+
+    match /masterSopStages/{stageId} {
+      allow read, write: if true;
+    }
+
+    match /departments/{deptId} {
+      allow read, write: if true;
+    }
+
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // Default safety catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "AutoFloor Pro — Job Time Tracking & Shop Floor Control",
+  "description": "ระบบบันทึกเวลาทำงานและควบคุมหน้างานอู่ซ่อมรถแบบ Real-time เชื่อมต่อโครงสร้างฐานข้อมูล Google Sheets 6 ชีต พร้อมโค้ด Google Apps Script (Code.gs & Index.html) ฉบับสมบูรณ์",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
