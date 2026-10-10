@@ -1453,6 +1453,7 @@ export default function App() {
             workCalendar={workCalendar}
             techLeaves={techLeaves}
             targetEfficiencyPct={targetEfficiencyPct}
+            departments={departments}
           />
         )}
 
