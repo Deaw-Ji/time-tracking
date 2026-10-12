@@ -63,6 +63,7 @@ interface SheetsAndSettingsViewProps {
   onUpdateSettings: (newSettings: SheetSetting[]) => void;
   onUpdateWorkCalendar: (newCalendar: SheetWorkCalendar[]) => void;
   onUpdateTechLeaves: (newLeaves: TechLeave[]) => void;
+  onDeleteTechLeave?: (leaveId: string) => void;
   onUpdateDepartments: (newDepartments: MasterDepartment[]) => void;
   onUpdateCarBrands?: (newBrands: MasterCarBrand[]) => void;
   onAddUser: (user: SheetUser) => void;
@@ -93,6 +94,7 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
   onUpdateSettings,
   onUpdateWorkCalendar,
   onUpdateTechLeaves,
+  onDeleteTechLeave,
   onUpdateDepartments,
   onUpdateCarBrands = () => {},
   onAddUser,
@@ -3349,8 +3351,11 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  onUpdateTechLeaves(techLeaves.filter((l) => l.LeaveID !== leaveToDelete.LeaveID));
-                  showToast('ลบประวัติวันลาเรียบร้อยแล้ว');
+                  if (onDeleteTechLeave) {
+                    onDeleteTechLeave(leaveToDelete.LeaveID);
+                  } else {
+                    onUpdateTechLeaves(techLeaves.filter((l) => l.LeaveID !== leaveToDelete.LeaveID));
+                  }
                   setLeaveToDelete(null);
                 }}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg cursor-pointer"

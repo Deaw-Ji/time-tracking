@@ -46,8 +46,11 @@ import {
   saveSettingsToFirestore,
   saveCarPartsToFirestore,
   saveMasterSopStagesToFirestore,
+  deleteMasterSopStageFromFirestore,
   saveDepartmentsToFirestore,
+  deleteDepartmentFromFirestore,
   saveCarBrandsToFirestore,
+  deleteCarBrandFromFirestore,
 } from './services/firestoreService';
 import { DashboardView } from './components/DashboardView';
 import { JobsManagerView } from './components/JobsManagerView';
@@ -698,20 +701,44 @@ export default function App() {
   };
 
   const handleUpdateMasterSopStages = (stages: MasterSopStage[]) => {
+    const newIds = new Set(stages.map((s) => s.id));
+    const deletedStages = masterSopStages.filter((s) => !newIds.has(s.id));
     setMasterSopStages(stages);
+    localStorage.setItem('autofloor_master_sop_stages', JSON.stringify(stages));
     saveMasterSopStagesToFirestore(stages).catch((e) => console.error('Save stages error:', e));
+    if (deletedStages.length > 0) {
+      deletedStages.forEach((ds) => {
+        deleteMasterSopStageFromFirestore(ds.id).catch((e) => console.error('Delete stage error:', e));
+      });
+    }
     showToast('บันทึกขั้นตอนงานซ่อมหลักมาตรฐาน (Master SOP) เรียบร้อยแล้ว');
   };
 
   const handleUpdateDepartments = (newDepts: MasterDepartment[]) => {
+    const newIds = new Set(newDepts.map((d) => d.id));
+    const deletedDepts = departments.filter((d) => !newIds.has(d.id));
     setDepartments(newDepts);
+    localStorage.setItem('autofloor_departments', JSON.stringify(newDepts));
     saveDepartmentsToFirestore(newDepts).catch((e) => console.error('Save departments error:', e));
+    if (deletedDepts.length > 0) {
+      deletedDepts.forEach((dd) => {
+        deleteDepartmentFromFirestore(dd.id).catch((e) => console.error('Delete department error:', e));
+      });
+    }
     showToast('อัปเดตตารางแผนก Master Departments เรียบร้อยแล้ว');
   };
 
   const handleUpdateCarBrands = (newBrands: MasterCarBrand[]) => {
+    const newIds = new Set(newBrands.map((b) => b.id));
+    const deletedBrands = carBrands.filter((b) => !newIds.has(b.id));
     setCarBrands(newBrands);
+    localStorage.setItem('autofloor_car_brands', JSON.stringify(newBrands));
     saveCarBrandsToFirestore(newBrands).catch((e) => console.error('Save car brands error:', e));
+    if (deletedBrands.length > 0) {
+      deletedBrands.forEach((db) => {
+        deleteCarBrandFromFirestore(db.id).catch((e) => console.error('Delete car brand error:', e));
+      });
+    }
     showToast('อัปเดตรายการยี่ห้อและรุ่นรถมาตรฐานเรียบร้อยแล้ว');
   };
 
@@ -721,9 +748,30 @@ export default function App() {
     showToast('อัปเดตตารางวันทำงานในชีต WorkCalendar เรียบร้อยแล้ว');
   };
 
+  const handleDeleteTechLeave = async (leaveId: string) => {
+    const remaining = techLeaves.filter((l) => l.LeaveID !== leaveId);
+    setTechLeaves(remaining);
+    localStorage.setItem('autofloor_techleaves', JSON.stringify(remaining));
+    try {
+      await deleteTechLeaveFromFirestore(leaveId);
+      showToast('ลบประวัติวันลาเรียบร้อยแล้ว');
+    } catch (e) {
+      console.error('Delete tech leave error:', e);
+      showToast('เกิดข้อผิดพลาดในการลบวันลาจากฐานข้อมูล');
+    }
+  };
+
   const handleUpdateTechLeaves = (newLeaves: TechLeave[]) => {
+    const newIds = new Set(newLeaves.map((l) => l.LeaveID));
+    const deletedLeaves = techLeaves.filter((l) => !newIds.has(l.LeaveID));
     setTechLeaves(newLeaves);
+    localStorage.setItem('autofloor_techleaves', JSON.stringify(newLeaves));
     saveTechLeavesToFirestore(newLeaves).catch((e) => console.error('Save leaves error:', e));
+    if (deletedLeaves.length > 0) {
+      deletedLeaves.forEach((dl) => {
+        deleteTechLeaveFromFirestore(dl.LeaveID).catch((e) => console.error('Delete leave error:', e));
+      });
+    }
     showToast('อัปเดตตารางวันลา/วันหยุดช่างรายบุคคลเรียบร้อยแล้ว');
   };
 
@@ -1503,6 +1551,7 @@ export default function App() {
             onUpdateSettings={handleUpdateSettings}
             onUpdateWorkCalendar={handleUpdateWorkCalendar}
             onUpdateTechLeaves={handleUpdateTechLeaves}
+            onDeleteTechLeave={handleDeleteTechLeave}
             onUpdateDepartments={handleUpdateDepartments}
             onUpdateCarBrands={handleUpdateCarBrands}
             onAddUser={handleAddUser}

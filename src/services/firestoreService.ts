@@ -519,3 +519,21 @@ export async function deleteCarBrandFromFirestore(brandId: string) {
     throw error;
   }
 }
+
+export async function deleteDepartmentFromFirestore(deptId: string) {
+  try {
+    await deleteDoc(doc(db, 'departments', deptId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `departments/${deptId}`);
+    throw error;
+  }
+}
+
+export async function deleteMasterSopStageFromFirestore(stageId: string) {
+  try {
+    await deleteDoc(doc(db, 'masterSopStages', stageId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `masterSopStages/${stageId}`);
+    throw error;
+  }
+}
