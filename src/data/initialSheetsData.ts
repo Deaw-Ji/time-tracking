@@ -7,6 +7,7 @@ import {
   SheetSetting,
   MasterSopStage,
   MasterDepartment,
+  MasterCarBrand,
 } from '../types/shopFloor';
 
 export const INITIAL_USERS: SheetUser[] = [
@@ -235,5 +236,78 @@ export const INITIAL_DEPARTMENTS: MasterDepartment[] = [
   { id: 'DEPT-03', name: 'แผนกแต่งสี & พ่นห้องอบสี 2K', description: 'เทียบผสมสี, พ่นสีจริงสูตรน้ำ/2K, อบสีตู้อบลมร้อน' },
   { id: 'DEPT-04', name: 'แผนกประกอบขัดเงา & ตรวจสอบคุณภาพ', description: 'ประกอบชิ้นส่วนคืน, ขัดยาเงาลบละอองสี, ตรวจ QC' },
   { id: 'DEPT-05', name: 'ควบคุมงานซ่อมและรับรถ (SA / Controller)', description: 'ต้อนรับลูกค้า, ออกใบสั่งซ่อม, ควบคุมกระบวนการผลิต' },
+];
+
+export const INITIAL_CAR_BRANDS: MasterCarBrand[] = [
+  {
+    id: 'BRAND-TOYOTA',
+    name: 'Toyota',
+    models: ['Hilux Revo', 'Fortuner', 'Yaris', 'Yaris Cross', 'Corolla Cross', 'Corolla Altis', 'Camry', 'Commuter', 'Veloz', 'Innova Zenix'],
+  },
+  {
+    id: 'BRAND-HONDA',
+    name: 'Honda',
+    models: ['Civic', 'City', 'City Hatchback', 'HR-V', 'CR-V', 'Accord', 'BR-V', 'WR-V'],
+  },
+  {
+    id: 'BRAND-ISUZU',
+    name: 'Isuzu',
+    models: ['D-Max', 'MU-X', 'V-Cross'],
+  },
+  {
+    id: 'BRAND-FORD',
+    name: 'Ford',
+    models: ['Ranger', 'Everest', 'Ranger Raptor'],
+  },
+  {
+    id: 'BRAND-MITSUBISHI',
+    name: 'Mitsubishi',
+    models: ['Triton', 'Pajero Sport', 'Xpander', 'Xpander Cross', 'Attrage', 'Mirage'],
+  },
+  {
+    id: 'BRAND-MAZDA',
+    name: 'Mazda',
+    models: ['Mazda 2', 'Mazda 3', 'CX-3', 'CX-30', 'CX-5', 'CX-8', 'BT-50'],
+  },
+  {
+    id: 'BRAND-NISSAN',
+    name: 'Nissan',
+    models: ['Navara', 'Almera', 'Kicks e-POWER', 'Terra', 'Note', 'March'],
+  },
+  {
+    id: 'BRAND-BYD',
+    name: 'BYD',
+    models: ['Atto 3', 'Dolphin', 'Seal', 'Sealion 6', 'M6'],
+  },
+  {
+    id: 'BRAND-MG',
+    name: 'MG',
+    models: ['MG 4 Electric', 'MG ZS', 'MG VS HEV', 'MG HS', 'MG 5', 'MG EP / ES', 'MG Maxus 9'],
+  },
+  {
+    id: 'BRAND-GWM',
+    name: 'GWM',
+    models: ['Haval H6', 'Haval Jolion', 'ORA Good Cat', 'Tank 300', 'Tank 500'],
+  },
+  {
+    id: 'BRAND-MERCEDES',
+    name: 'Mercedes-Benz',
+    models: ['C-Class', 'E-Class', 'S-Class', 'GLC', 'GLE', 'GLA', 'A-Class', 'CLA'],
+  },
+  {
+    id: 'BRAND-BMW',
+    name: 'BMW',
+    models: ['3 Series', '5 Series', '7 Series', 'X1', 'X3', 'X5', 'iX3', 'i4'],
+  },
+  {
+    id: 'BRAND-SUZUKI',
+    name: 'Suzuki',
+    models: ['Swift', 'Ciaz', 'Celerio', 'Ertiga', 'XL7', 'Carry'],
+  },
+  {
+    id: 'BRAND-HYUNDAI',
+    name: 'Hyundai',
+    models: ['Staria', 'H-1', 'Creta', 'Stargazer', 'Ioniq 5'],
+  },
 ];
 

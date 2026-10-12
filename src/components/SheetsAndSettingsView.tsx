@@ -9,8 +9,10 @@ import {
   UserRole,
   MasterSopStage,
   MasterDepartment,
+  MasterCarBrand,
   TechLeave,
 } from '../types/shopFloor';
+import { INITIAL_CAR_BRANDS } from '../data/initialSheetsData';
 import {
   Download,
   Save,
@@ -29,10 +31,14 @@ import {
   Flame,
   Cloud,
   Moon,
+  Car,
+  RotateCcw,
+  Search,
 } from 'lucide-react';
 
 export type SheetTabName =
   | 'Departments'
+  | 'CarBrands'
   | 'CarParts'
   | 'MasterTasks'
   | 'Users'
@@ -51,12 +57,14 @@ interface SheetsAndSettingsViewProps {
   carParts: string[];
   masterSopStages: MasterSopStage[];
   departments: MasterDepartment[];
+  carBrands?: MasterCarBrand[];
   initialSubTab?: SheetTabName;
   currentUserRole?: UserRole;
   onUpdateSettings: (newSettings: SheetSetting[]) => void;
   onUpdateWorkCalendar: (newCalendar: SheetWorkCalendar[]) => void;
   onUpdateTechLeaves: (newLeaves: TechLeave[]) => void;
   onUpdateDepartments: (newDepartments: MasterDepartment[]) => void;
+  onUpdateCarBrands?: (newBrands: MasterCarBrand[]) => void;
   onAddUser: (user: SheetUser) => void;
   onDeleteUser: (userId: string) => void;
   onEditUser: (user: SheetUser) => void;
@@ -79,12 +87,14 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
   carParts,
   masterSopStages,
   departments,
+  carBrands = [],
   initialSubTab = 'Departments',
   currentUserRole,
   onUpdateSettings,
   onUpdateWorkCalendar,
   onUpdateTechLeaves,
   onUpdateDepartments,
+  onUpdateCarBrands = () => {},
   onAddUser,
   onDeleteUser,
   onEditUser,
@@ -97,7 +107,11 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
 }) => {
   const [activeSheet, setActiveSheet] = useState<SheetTabName>(() => {
     if (currentUserRole === 'Controller') {
-      return initialSubTab === 'WorkCalendar' ? 'WorkCalendar' : 'CarParts';
+      return initialSubTab === 'WorkCalendar'
+        ? 'WorkCalendar'
+        : initialSubTab === 'CarBrands'
+        ? 'CarBrands'
+        : 'CarParts';
     }
     return initialSubTab;
   });
@@ -109,7 +123,12 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
 
   useEffect(() => {
     if (initialSubTab) {
-      if (currentUserRole === 'Controller' && initialSubTab !== 'CarParts' && initialSubTab !== 'WorkCalendar') {
+      if (
+        currentUserRole === 'Controller' &&
+        initialSubTab !== 'CarParts' &&
+        initialSubTab !== 'WorkCalendar' &&
+        initialSubTab !== 'CarBrands'
+      ) {
         setActiveSheet('CarParts');
       } else {
         setActiveSheet(initialSubTab);
@@ -118,7 +137,12 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
   }, [initialSubTab, currentUserRole]);
 
   useEffect(() => {
-    if (currentUserRole === 'Controller' && activeSheet !== 'CarParts' && activeSheet !== 'WorkCalendar') {
+    if (
+      currentUserRole === 'Controller' &&
+      activeSheet !== 'CarParts' &&
+      activeSheet !== 'WorkCalendar' &&
+      activeSheet !== 'CarBrands'
+    ) {
       setActiveSheet('CarParts');
     }
   }, [currentUserRole, activeSheet]);
@@ -207,6 +231,17 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
   const [resettingUserForAdmin, setResettingUserForAdmin] = useState<SheetUser | null>(null);
   const [adminResetNewPass, setAdminResetNewPass] = useState('123456');
 
+  // Car Brands & Models Master state
+  const [carBrandSearch, setCarBrandSearch] = useState('');
+  const [newBrandName, setNewBrandName] = useState('');
+  const [newBrandModelsInput, setNewBrandModelsInput] = useState('');
+  const [editingBrand, setEditingBrand] = useState<MasterCarBrand | null>(null);
+  const [editingBrandName, setEditingBrandName] = useState('');
+  const [editingBrandModelsInput, setEditingBrandModelsInput] = useState('');
+  const [brandToDelete, setBrandToDelete] = useState<MasterCarBrand | null>(null);
+  const [inlineNewModel, setInlineNewModel] = useState<Record<string, string>>({});
+  const [showResetBrandsModal, setShowResetBrandsModal] = useState(false);
+
   // Confirm delete modal states
   const [deptToDelete, setDeptToDelete] = useState<MasterDepartment | null>(null);
   const [partToDelete, setPartToDelete] = useState<string | null>(null);
@@ -220,11 +255,14 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
       !!resettingUserForAdmin ||
       !!editingUser ||
       !!editingDept ||
+      !!editingBrand ||
       !!deptToDelete ||
+      !!brandToDelete ||
       !!partToDelete ||
       !!stageToDelete ||
       !!userToDelete ||
       !!leaveToDelete ||
+      showResetBrandsModal ||
       showClearLogsModal;
     if (isAnyModalOpen) {
       document.body.style.overflow = 'hidden';
@@ -238,11 +276,14 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
     resettingUserForAdmin,
     editingUser,
     editingDept,
+    editingBrand,
     deptToDelete,
+    brandToDelete,
     partToDelete,
     stageToDelete,
     userToDelete,
     leaveToDelete,
+    showResetBrandsModal,
     showClearLogsModal,
   ]);
 
@@ -286,6 +327,7 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
   const [leaveType, setLeaveType] = useState('ลากิจ');
   const [leaveNotes, setLeaveNotes] = useState('');
   const [leaveSearch, setLeaveSearch] = useState('');
+  const [leaveTypeFilter, setLeaveTypeFilter] = useState<'ALL' | string>('ALL');
 
   const technicians = users.filter((u) => u.Role === 'Technician' && u.Status === 'Active');
 
@@ -830,6 +872,106 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
     setResettingUserForAdmin(null);
   };
 
+  // CarBrands Handlers
+  const filteredCarBrands = useMemo(() => {
+    const q = carBrandSearch.trim().toLowerCase();
+    if (!q) return carBrands;
+    return carBrands.filter(
+      (b) =>
+        b.name.toLowerCase().includes(q) ||
+        b.models.some((m) => m.toLowerCase().includes(q))
+    );
+  }, [carBrands, carBrandSearch]);
+
+  const totalCarModelsCount = useMemo(() => {
+    return carBrands.reduce((acc, b) => acc + (b.models?.length || 0), 0);
+  }, [carBrands]);
+
+  const handleAddBrandSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = newBrandName.trim();
+    if (!trimmedName) return;
+    if (carBrands.some((b) => b.name.toLowerCase() === trimmedName.toLowerCase())) {
+      showToast('มียี่ห้อรถนี้อยู่ในระบบแล้ว');
+      return;
+    }
+    const parsedModels = newBrandModelsInput
+      .split(/[,;\n]/)
+      .map((m) => m.trim())
+      .filter((m) => m.length > 0);
+    const newBrand: MasterCarBrand = {
+      id: `BRAND-${Date.now()}`,
+      name: trimmedName,
+      models: parsedModels,
+    };
+    onUpdateCarBrands([...carBrands, newBrand]);
+    setNewBrandName('');
+    setNewBrandModelsInput('');
+    showToast(`เพิ่มยี่ห้อ "${trimmedName}" สำเร็จ (${parsedModels.length} รุ่น)`);
+  };
+
+  const handleEditBrandSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBrand) return;
+    const trimmedName = editingBrandName.trim();
+    if (!trimmedName) return;
+    const parsedModels = editingBrandModelsInput
+      .split(/[,;\n]/)
+      .map((m) => m.trim())
+      .filter((m) => m.length > 0);
+    const updated = carBrands.map((b) =>
+      b.id === editingBrand.id
+        ? { ...b, name: trimmedName, models: parsedModels }
+        : b
+    );
+    onUpdateCarBrands(updated);
+    setEditingBrand(null);
+    showToast(`อัปเดตยี่ห้อ "${trimmedName}" สำเร็จ`);
+  };
+
+  const handleDeleteBrandConfirm = () => {
+    if (!brandToDelete) return;
+    const updated = carBrands.filter((b) => b.id !== brandToDelete.id);
+    onUpdateCarBrands(updated);
+    showToast(`ลบยี่ห้อ "${brandToDelete.name}" เรียบร้อยแล้ว`);
+    setBrandToDelete(null);
+  };
+
+  const handleInlineAddModel = (brandId: string) => {
+    const modelName = (inlineNewModel[brandId] || '').trim();
+    if (!modelName) return;
+    const updated = carBrands.map((b) => {
+      if (b.id === brandId) {
+        if (b.models.some((m) => m.toLowerCase() === modelName.toLowerCase())) {
+          showToast(`มีรุ่น "${modelName}" ในยี่ห้อนี้อยู่แล้ว`);
+          return b;
+        }
+        return { ...b, models: [...b.models, modelName] };
+      }
+      return b;
+    });
+    onUpdateCarBrands(updated);
+    setInlineNewModel((prev) => ({ ...prev, [brandId]: '' }));
+    showToast(`เพิ่มรุ่น "${modelName}" เรียบร้อย`);
+  };
+
+  const handleInlineDeleteModel = (brandId: string, modelName: string) => {
+    const updated = carBrands.map((b) => {
+      if (b.id === brandId) {
+        return { ...b, models: b.models.filter((m) => m !== modelName) };
+      }
+      return b;
+    });
+    onUpdateCarBrands(updated);
+    showToast(`ลบรุ่น "${modelName}" เรียบร้อย`);
+  };
+
+  const handleResetCarBrands = () => {
+    onUpdateCarBrands(INITIAL_CAR_BRANDS);
+    setShowResetBrandsModal(false);
+    showToast('รีเซ็ตรายการยี่ห้อและรุ่นรถเป็นค่ามาตรฐาน 13 ยี่ห้อเรียบร้อย');
+  };
+
   const exportSheetToCsv = (sheetName: SheetTabName) => {
     let headers: string[] = [];
     let rows: (string | number | boolean)[][] = [];
@@ -894,6 +1036,14 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
     } else if (sheetName === 'WorkCalendar') {
       headers = ['Date', 'IsWorkDay', 'StandardHours'];
       rows = workCalendar.map((w) => [w.Date, w.IsWorkDay, w.StandardHours]);
+    } else if (sheetName === 'CarBrands') {
+      headers = ['Brand ID', 'Brand Name', 'Models Count', 'Models List'];
+      rows = carBrands.map((b) => [
+        b.id,
+        b.name,
+        b.models.length,
+        b.models.join(', '),
+      ]);
     } else if (sheetName === 'Settings') {
       headers = ['ConfigKey', 'ConfigValue', 'Description'];
       rows = settings.map((s) => [s.ConfigKey, s.ConfigValue, s.Description]);
@@ -917,22 +1067,26 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
 
   const allSheetTabs: { id: SheetTabName; label: string; count?: number | string }[] = [
     { id: 'Departments', label: '0. จัดการแผนก (Departments)', count: departments.length },
-    { id: 'CarParts', label: '1. ชิ้นส่วนตัวถังที่จะซ่อมทำสี', count: carParts.length },
-    { id: 'MasterTasks', label: '2. ขั้นตอนงานซ่อมหลัก & ผูกแผนก (Master SOP)', count: masterSopStages.length },
-    { id: 'Users', label: '3. ผู้ใช้งาน/ช่าง (Users)', count: users.length },
-    { id: 'Settings', label: '4. ตั้งค่าระบบ (Settings)', count: settings.length },
-    { id: 'WorkCalendar', label: '5. ปฏิทินวันทำงาน & วันลาช่าง', count: workCalendar.length + techLeaves.length },
-    { id: 'TimeLogs', label: '6. บันทึกเวลา (TimeLogs)', count: timeLogs.length },
+    { id: 'CarBrands', label: '1. ยี่ห้อ & รุ่นรถ (Car Brands & Models)', count: carBrands.length },
+    { id: 'CarParts', label: '2. ชิ้นส่วนตัวถังที่จะซ่อมทำสี', count: carParts.length },
+    { id: 'MasterTasks', label: '3. ขั้นตอนงานซ่อมหลัก & ผูกแผนก (Master SOP)', count: masterSopStages.length },
+    { id: 'Users', label: '4. ผู้ใช้งาน/ช่าง (Users)', count: users.length },
+    { id: 'Settings', label: '5. ตั้งค่าระบบ (Settings)', count: settings.length },
+    { id: 'WorkCalendar', label: '6. ปฏิทินวันทำงาน & วันลาช่าง', count: workCalendar.length + techLeaves.length },
+    { id: 'TimeLogs', label: '7. บันทึกเวลา (TimeLogs)', count: timeLogs.length },
   ];
 
   const sheetTabs = useMemo(() => {
     if (currentUserRole === 'Controller') {
-      return allSheetTabs.filter((tab) => tab.id === 'CarParts' || tab.id === 'WorkCalendar');
+      return allSheetTabs.filter(
+        (tab) => tab.id === 'CarBrands' || tab.id === 'CarParts' || tab.id === 'WorkCalendar'
+      );
     }
     return allSheetTabs;
   }, [
     currentUserRole,
     departments.length,
+    carBrands.length,
     carParts.length,
     masterSopStages.length,
     users.length,
@@ -1251,7 +1405,258 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
         </div>
       )}
 
-      {/* TAB 1: CAR PARTS MASTER MANAGEMENT */}
+      {/* TAB 1: CAR BRANDS & MODELS MASTER MANAGEMENT */}
+      {activeSheet === 'CarBrands' && (
+        <div className="space-y-6">
+          {/* Header Stats & Info Banner */}
+          <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white rounded-xl p-5 shadow-xs border border-blue-500/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-3 bg-blue-500/20 border border-blue-400/30 text-blue-300 rounded-xl shrink-0">
+                <Car className="w-6 h-6 text-blue-300" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-white tracking-wide">
+                    จัดการข้อมูลหลัก: ยี่ห้อและรุ่นรถยนต์ (Master Car Brands & Models)
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                    Cascading Datalist
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 font-medium mt-1">
+                  กำหนดรายชื่อยี่ห้อรถและรุ่นรถที่เชื่อมโยงกัน เพื่อให้ Controller เลือกเปิดใบงานได้สะดวกรวดเร็ว แม่นยำ และเป็นมาตรฐานเดียวกัน
+                </p>
+                <div className="flex items-center gap-3 mt-2 text-xs font-semibold text-blue-200">
+                  <span className="bg-blue-950/60 px-2.5 py-1 rounded-lg border border-blue-500/30">
+                    🚗 ทั้งหมด: <strong className="text-white">{carBrands.length}</strong> ยี่ห้อ
+                  </span>
+                  <span className="bg-blue-950/60 px-2.5 py-1 rounded-lg border border-blue-500/30">
+                    🚘 รวมทั้งหมด: <strong className="text-white">{totalCarModelsCount}</strong> รุ่น
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => exportSheetToCsv('CarBrands')}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-200 bg-white/10 hover:bg-white/20 rounded-lg border border-white/20 transition-colors cursor-pointer"
+                title="ส่งออกรายการยี่ห้อและรุ่นรถเป็นไฟล์ CSV"
+              >
+                <Download className="w-3.5 h-3.5" />
+                ส่งออก CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowResetBrandsModal(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-amber-200 bg-amber-500/20 hover:bg-amber-500/30 rounded-lg border border-amber-400/30 transition-colors cursor-pointer"
+                title="รีเซ็ตเป็นค่ามาตรฐาน 13 ยี่ห้อหลักในไทย"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                รีเซ็ต 13 ยี่ห้อมาตรฐาน
+              </button>
+            </div>
+          </div>
+
+          {/* Form: Add New Brand */}
+          <form
+            onSubmit={handleAddBrandSubmit}
+            className="bg-white border border-slate-200 rounded-xl p-5 space-y-4 shadow-xs"
+          >
+            <div className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Plus className="w-4 h-4 text-blue-600" />
+              เพิ่มยี่ห้อรถและรายการรุ่นใหม่ลงระบบ
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 text-xs font-medium">
+              <div className="sm:col-span-4">
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  ชื่อยี่ห้อรถ (Brand Name) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newBrandName}
+                  onChange={(e) => setNewBrandName(e.target.value)}
+                  placeholder="เช่น Tesla, Changan, Neta, Deepal..."
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                />
+              </div>
+              <div className="sm:col-span-8">
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  รุ่นรถเริ่มต้น (Models - คั่นด้วยเครื่องหมายจุลภาค , )
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newBrandModelsInput}
+                    onChange={(e) => setNewBrandModelsInput(e.target.value)}
+                    placeholder="เช่น Model 3, Model Y, CyberTruck (คั่นด้วยคอมม่า)"
+                    className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-xs font-medium text-slate-900 focus:outline-none focus:border-blue-600"
+                  />
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs cursor-pointer whitespace-nowrap"
+                  >
+                    <Plus className="w-4 h-4" />
+                    เพิ่มยี่ห้อใหม่
+                  </button>
+                </div>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              * ข้อมูลยี่ห้อและรุ่นรถที่บันทึกนี้ จะไปปรากฏใน Dropdown / Datalist ในหน้าเปิดใบงานและแก้ไขใบงานให้ Controller ทันที และช่างจะเห็นชื่อรุ่นในบอร์ด
+            </p>
+          </form>
+
+          {/* Brands Toolbar & Search */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+              <span>แสดงทั้งหมด ({filteredCarBrands.length} ยี่ห้อ)</span>
+              {carBrandSearch && (
+                <span className="text-[11px] font-normal text-slate-500">
+                  (กรองด้วยคำค้นหา: &quot;{carBrandSearch}&quot;)
+                </span>
+              )}
+            </div>
+            <div className="relative w-full sm:w-72">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={carBrandSearch}
+                onChange={(e) => setCarBrandSearch(e.target.value)}
+                placeholder="ค้นหายี่ห้อ หรือ รุ่นรถ..."
+                className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-blue-600"
+              />
+              {carBrandSearch && (
+                <button
+                  type="button"
+                  onClick={() => setCarBrandSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Grid of Car Brands */}
+          {filteredCarBrands.length === 0 ? (
+            <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500 shadow-xs">
+              <Car className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+              <p className="font-bold text-sm text-slate-700">ไม่พบยี่ห้อหรือรุ่นรถที่ตรงกับคำค้นหา</p>
+              <p className="text-xs text-slate-400 mt-1">ลองเปลี่ยนคำค้นหา หรือกดปุ่มเพิ่มยี่ห้อรถด้านบน</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredCarBrands.map((brand) => (
+                <div
+                  key={brand.id}
+                  className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between hover:border-blue-200 transition-colors"
+                >
+                  {/* Top: Brand Header */}
+                  <div>
+                    <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg">
+                          <Car className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-sm text-slate-900">{brand.name}</h4>
+                          <span className="text-[11px] text-slate-500 font-semibold">
+                            {brand.models.length} รุ่น
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingBrand(brand);
+                            setEditingBrandName(brand.name);
+                            setEditingBrandModelsInput(brand.models.join(', '));
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                          title={`แก้ไขยี่ห้อ ${brand.name}`}
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBrandToDelete(brand)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                          title={`ลบยี่ห้อ ${brand.name}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Inline Quick Add Model */}
+                    <div className="mt-3 flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={inlineNewModel[brand.id] || ''}
+                        onChange={(e) =>
+                          setInlineNewModel((prev) => ({ ...prev, [brand.id]: e.target.value }))
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleInlineAddModel(brand.id);
+                          }
+                        }}
+                        placeholder={`+ เพิ่มรุ่นใน ${brand.name}...`}
+                        className="flex-1 px-2.5 py-1.5 text-[11px] border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleInlineAddModel(brand.id)}
+                        className="px-2.5 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-[11px] font-bold cursor-pointer whitespace-nowrap transition-colors"
+                      >
+                        + เพิ่ม
+                      </button>
+                    </div>
+
+                    {/* Models Chips Container */}
+                    <div className="mt-3">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                        รายการรุ่นรถ ({brand.models.length}):
+                      </p>
+                      {brand.models.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic py-2">
+                          ยังไม่มีรายการรุ่นรถ (พิมพ์เพิ่มในช่องด้านบนได้เลย)
+                        </p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-1">
+                          {brand.models.map((model) => (
+                            <span
+                              key={model}
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200/80 text-slate-800 text-[11px] font-semibold rounded-md border border-slate-200/70 transition-colors group"
+                            >
+                              <span>{model}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleInlineDeleteModel(brand.id, model)}
+                                className="text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
+                                title={`ลบรุ่น ${model}`}
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: CAR PARTS MASTER MANAGEMENT */}
       {activeSheet === 'CarParts' && (
         <div className="space-y-6">
           <form
@@ -2110,7 +2515,7 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
                   : 'border-transparent text-slate-500 hover:text-slate-900'
               }`}
             >
-              🌴 2. บันทึกวันลา / วันหยุดส่วนตัวช่างรายบุคคล (Tech Leaves)
+              🌴 2. บันทึกวันลา / วันหยุดช่างรายบุคคล (Tech Leaves)
             </button>
           </div>
 
@@ -2488,16 +2893,17 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-slate-700 mb-1">ประเภทการลา *</label>
+                        <label className="block text-slate-700 mb-1 font-bold">ประเภทการลา / วันหยุด *</label>
                         <select
                           value={leaveType}
                           onChange={(e) => setLeaveType(e.target.value)}
-                          className="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white text-slate-950 font-bold"
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2 bg-white text-slate-950 font-bold focus:outline-none focus:border-blue-600 cursor-pointer"
                         >
                           <option value="ลากิจ">ลากิจ (Personal Leave)</option>
                           <option value="ลาป่วย">ลาป่วย (Sick Leave)</option>
                           <option value="พักร้อน">พักร้อน (Annual Leave)</option>
-                          <option value="วันหยุดส่วนตัว">วันหยุดชดเชยส่วนตัว</option>
+                          <option value="วันหยุดพิเศษ">วันหยุดพิเศษ (Special Holiday)</option>
+                          <option value="สลับวันหยุด">สลับวันหยุด (Shift Swap)</option>
                         </select>
                       </div>
                     </div>
@@ -2508,7 +2914,7 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
                         type="text"
                         value={leaveNotes}
                         onChange={(e) => setLeaveNotes(e.target.value)}
-                        placeholder="เช่น พบแพทย์ตามนัด, ต่อใบขับขี่..."
+                        placeholder="เช่น พบแพทย์ตามนัด, สลับเข้าเวรวันหยุด..."
                         className="w-full border border-slate-300 rounded-lg px-3 py-2"
                       />
                     </div>
@@ -2532,14 +2938,29 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
                       <h3 className="text-sm font-bold text-slate-900">
                         รายการส่งใบลา / วันหยุดช่างพ่นสีทั้งหมด ({techLeaves.length} รายการ)
                       </h3>
+                      <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                        ระบบจะหักชั่วโมงทำงานของช่างในวันดังกล่าวออกจากฐานคำนวณการใช้เวลา (Utilization %) ให้อัตโนมัติ
+                      </p>
                     </div>
-                    <div className="w-full sm:w-48">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={leaveTypeFilter}
+                        onChange={(e) => setLeaveTypeFilter(e.target.value)}
+                        className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:border-blue-500 cursor-pointer"
+                      >
+                        <option value="ALL">ทุกประเภทการลา</option>
+                        <option value="ลากิจ">ลากิจ</option>
+                        <option value="ลาป่วย">ลาป่วย</option>
+                        <option value="พักร้อน">พักร้อน</option>
+                        <option value="วันหยุดพิเศษ">วันหยุดพิเศษ</option>
+                        <option value="สลับวันหยุด">สลับวันหยุด</option>
+                      </select>
                       <input
                         type="text"
                         value={leaveSearch}
                         onChange={(e) => setLeaveSearch(e.target.value)}
                         placeholder="🔍 ค้นหาชื่อช่าง..."
-                        className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs"
+                        className="w-36 sm:w-44 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-blue-500"
                       />
                     </div>
                   </div>
@@ -2565,9 +2986,18 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
                         ) : (
                           techLeaves
                             .filter((l) => {
+                              if (leaveTypeFilter !== 'ALL') {
+                                const normalizedType =
+                                  l.Type === 'วันหยุดส่วนตัว' ? 'วันหยุดพิเศษ' : l.Type;
+                                if (normalizedType !== leaveTypeFilter) return false;
+                              }
                               if (!leaveSearch.trim()) return true;
                               const displayName = getTechDisplayName(l.TechEmail).toLowerCase();
-                              return displayName.includes(leaveSearch.trim().toLowerCase());
+                              const notes = (l.Notes || '').toLowerCase();
+                              return (
+                                displayName.includes(leaveSearch.trim().toLowerCase()) ||
+                                notes.includes(leaveSearch.trim().toLowerCase())
+                              );
                             })
                             .map((l) => (
                               <tr key={l.LeaveID} className="hover:bg-slate-50 transition-colors">
@@ -2577,25 +3007,31 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
                                 </td>
                                 <td className="py-3 px-4">
                                   <span
-                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-bold ${
                                       l.Type === 'ลาป่วย'
                                         ? 'bg-rose-50 text-rose-700 border border-rose-200'
                                         : l.Type === 'ลากิจ'
                                         ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                        : l.Type === 'พักร้อน'
+                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                        : l.Type === 'วันหยุดพิเศษ' || l.Type === 'วันหยุดส่วนตัว'
+                                        ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                        : l.Type === 'สลับวันหยุด'
+                                        ? 'bg-cyan-50 text-cyan-700 border border-cyan-200'
                                         : 'bg-blue-50 text-blue-700 border border-blue-200'
                                     }`}
                                   >
-                                    {l.Type}
+                                    {l.Type === 'วันหยุดส่วนตัว' ? 'วันหยุดพิเศษ' : l.Type}
                                   </span>
                                 </td>
-                                <td className="py-3 px-4 text-slate-500 font-medium truncate max-w-[120px]" title={l.Notes}>
+                                <td className="py-3 px-4 text-slate-600 font-medium truncate max-w-[140px]" title={l.Notes}>
                                   {l.Notes || '-'}
                                 </td>
                                 <td className="py-3 px-4 text-right">
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteTechLeave(l.LeaveID)}
-                                    className="p-1 text-slate-400 hover:text-red-600 transition-colors"
+                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                                     title="ลบใบลาหยุดนี้"
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -2959,6 +3395,154 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg cursor-pointer"
               >
                 ยืนยันล้าง TimeLogs ทั้งหมด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT CAR BRAND MODAL */}
+      {editingBrand && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-hidden animate-fadeIn">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl animate-scaleUp">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-slate-900 font-bold">
+                <Car className="w-5 h-5 text-blue-600" />
+                <span>แก้ไขข้อมูลยี่ห้อและรุ่นรถ: {editingBrand.name}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingBrand(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditBrandSubmit} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">
+                  ชื่อยี่ห้อรถ (Brand Name) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingBrandName}
+                  onChange={(e) => setEditingBrandName(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">
+                  รายการรุ่นรถ (คั่นด้วยเครื่องหมายจุลภาค , หรือขึ้นบรรทัดใหม่)
+                </label>
+                <textarea
+                  rows={4}
+                  value={editingBrandModelsInput}
+                  onChange={(e) => setEditingBrandModelsInput(e.target.value)}
+                  placeholder="เช่น Hilux Revo, Fortuner, Yaris..."
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-slate-800 font-medium focus:outline-none focus:border-blue-600"
+                />
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  ตัวอย่าง: Hilux Revo, Fortuner, Yaris, Corolla Cross
+                </span>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 font-bold">
+                <button
+                  type="button"
+                  onClick={() => setEditingBrand(null)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer shadow-xs"
+                >
+                  บันทึกการแก้ไข
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM DELETE CAR BRAND MODAL */}
+      {brandToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-hidden animate-fadeIn">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-scaleUp">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="p-2.5 bg-red-50 rounded-xl">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">ยืนยันการลบยี่ห้อรถ</h3>
+                <p className="text-xs text-slate-500 font-medium">รายการยี่ห้อและรุ่นรถในยี่ห้อนี้จะถูกลบออกจากตัวเลือก</p>
+              </div>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-700">
+              คุณต้องการลบยี่ห้อ <strong className="text-slate-900">&quot;{brandToDelete.name}&quot;</strong> (มี {brandToDelete.models.length} รุ่น) ออกจากรายการหลักใช่หรือไม่?
+              <div className="mt-1 text-[11px] text-slate-500">
+                * ใบงานที่เคยเปิดไปแล้วจะไม่ได้รับผลกระทบ
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setBrandToDelete(null)}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteBrandConfirm}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg cursor-pointer"
+              >
+                ยืนยันลบยี่ห้อนี้
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM RESET CAR BRANDS MODAL */}
+      {showResetBrandsModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-hidden animate-fadeIn">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-scaleUp">
+            <div className="flex items-center gap-3 text-amber-600">
+              <div className="p-2.5 bg-amber-50 rounded-xl">
+                <RotateCcw className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">รีเซ็ตเป็น 13 ยี่ห้อมาตรฐานไทย</h3>
+                <p className="text-xs text-slate-500 font-medium">กู้คืนรายชื่อยี่ห้อและรุ่นรถยอดนิยมสำหรับอู่ซ่อมสีตัวถัง</p>
+              </div>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-700 space-y-2">
+              <p>
+                ระบบจะรีเซ็ตรายการยี่ห้อและรุ่นรถเป็นค่ามาตรฐานเริ่มต้น 13 ยี่ห้อ (Toyota, Honda, Isuzu, Ford, Mitsubishi, Mazda, Nissan, BYD, MG, GWM, Mercedes-Benz, BMW, Suzuki, Hyundai รวม 85+ รุ่น)
+              </p>
+              <p className="text-[11px] text-amber-700 font-medium">
+                * ยี่ห้อใหม่ที่คุณสร้างเพิ่มเองจะถูกแทนที่ด้วยชุดมาตรฐาน
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setShowResetBrandsModal(false)}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handleResetCarBrands}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg cursor-pointer shadow-xs"
+              >
+                ยืนยันรีเซ็ตเป็นค่ามาตรฐาน
               </button>
             </div>
           </div>

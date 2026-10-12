@@ -17,6 +17,7 @@ import {
   SheetSetting,
   MasterSopStage,
   MasterDepartment,
+  MasterCarBrand,
   TechLeave,
 } from '../types/shopFloor';
 import {
@@ -30,6 +31,7 @@ import {
   INITIAL_MASTER_SOP_STAGES,
   INITIAL_TECH_LEAVES,
   INITIAL_DEPARTMENTS,
+  INITIAL_CAR_BRANDS,
 } from '../data/initialSheetsData';
 
 export enum OperationType {
@@ -127,6 +129,10 @@ export async function seedInitialDataIfEmpty() {
         batch.set(doc(db, 'departments', dept.id), dept);
       });
 
+      INITIAL_CAR_BRANDS.forEach((brand) => {
+        batch.set(doc(db, 'carBrands', brand.id), brand);
+      });
+
       await batch.commit();
       console.log('Initial workshop database seeded successfully!');
     }
@@ -147,6 +153,7 @@ export interface WorkshopFirestoreSubscribers {
   onStagesChange: (stages: MasterSopStage[]) => void;
   onLeavesChange: (leaves: TechLeave[]) => void;
   onDepartmentsChange: (departments: MasterDepartment[]) => void;
+  onCarBrandsChange?: (brands: MasterCarBrand[]) => void;
   onConnectionStatus?: (isConnected: boolean) => void;
 }
 
@@ -302,6 +309,22 @@ export function subscribeToWorkshopData(callbacks: WorkshopFirestoreSubscribers)
         }
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'departments')
+    )
+  );
+
+  // 11. Car Brands
+  unsubscribers.push(
+    onSnapshot(
+      collection(db, 'carBrands'),
+      (snap) => {
+        if (!snap.empty) {
+          const list: MasterCarBrand[] = [];
+          snap.forEach((d) => list.push(d.data() as MasterCarBrand));
+          list.sort((a, b) => a.name.localeCompare(b.name));
+          callbacks.onCarBrandsChange?.(list);
+        }
+      },
+      (err) => handleFirestoreError(err, OperationType.GET, 'carBrands')
     )
   );
 
@@ -471,6 +494,28 @@ export async function saveDepartmentsToFirestore(departments: MasterDepartment[]
     await batch.commit();
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, 'departments');
+    throw error;
+  }
+}
+
+export async function saveCarBrandsToFirestore(brands: MasterCarBrand[]) {
+  try {
+    const batch = writeBatch(db);
+    brands.forEach((brand) => {
+      batch.set(doc(db, 'carBrands', brand.id), brand);
+    });
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, 'carBrands');
+    throw error;
+  }
+}
+
+export async function deleteCarBrandFromFirestore(brandId: string) {
+  try {
+    await deleteDoc(doc(db, 'carBrands', brandId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `carBrands/${brandId}`);
     throw error;
   }
 }

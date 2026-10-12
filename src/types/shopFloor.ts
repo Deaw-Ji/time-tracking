@@ -25,6 +25,9 @@ export interface SheetJob {
   DueDate: string; // YYYY-MM-DD (วันกำหนดรถเสร็จ)
   DeliveryDate?: string; // YYYY-MM-DD (วันกำหนดส่งมอบรถลูกค้า)
   Status: JobStatus;
+  CarBrand?: string; // ยี่ห้อรถ เช่น Toyota, Honda, Isuzu
+  CarModel?: string; // รุ่นรถ เช่น Hilux Revo, Civic, D-Max
+  CarColor?: string; // สีรถ เช่น ขาวมุก, ดำเงา, บรอนซ์เงิน
 }
 
 export type TaskStatus = 'Pending' | 'In Progress' | 'Paused' | 'Completed';
@@ -64,7 +67,7 @@ export interface TechLeave {
   LeaveID: string;
   TechEmail: string;
   Date: string; // YYYY-MM-DD
-  Type: string; // 'ลากิจ' | 'ลาป่วย' | 'พักร้อน' | 'วันหยุดส่วนตัว'
+  Type: string; // 'ลากิจ' | 'ลาป่วย' | 'พักร้อน' | 'วันหยุดพิเศษ' | 'สลับวันหยุด'
   Notes?: string;
 }
 
@@ -106,4 +109,10 @@ export interface MasterDepartment {
   id: string;
   name: string;
   description?: string;
+}
+
+export interface MasterCarBrand {
+  id: string;
+  name: string;
+  models: string[];
 }

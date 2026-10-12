@@ -171,7 +171,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <span className="font-mono font-semibold text-slate-900">
                 {activeTask.TaskID}
               </span>
-              <span>({activeJob?.LicensePlate || activeTask.JobID})</span>
+              <span>({activeJob?.CarBrand ? `${activeJob.CarBrand} ${activeJob.CarModel || ''} · ` : ''}{activeJob?.LicensePlate || activeTask.JobID})</span>
               <span>—</span>
               <span className="font-semibold text-slate-900">{activeTask.TaskName}</span>
             </div>
@@ -420,6 +420,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <div className="font-bold text-slate-900 font-mono">
                         {j?.LicensePlate || task.JobID}
                       </div>
+                      {(j?.CarBrand || j?.CarModel) && (
+                        <div className="text-[11px] font-semibold text-blue-700">
+                          🚗 {j.CarBrand} {j.CarModel} {j.CarColor ? `(${j.CarColor})` : ''}
+                        </div>
+                      )}
                       <div className="text-[11px] text-slate-500 font-mono">{task.JobID}</div>
                     </td>
                     <td className="py-3 px-4 align-top">

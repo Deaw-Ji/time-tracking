@@ -12,6 +12,7 @@ import {
   JobStatus,
   MasterSopStage,
   MasterDepartment,
+  MasterCarBrand,
   TechLeave,
 } from './types/shopFloor';
 import {
@@ -25,6 +26,7 @@ import {
   INITIAL_MASTER_SOP_STAGES,
   INITIAL_TECH_LEAVES,
   INITIAL_DEPARTMENTS,
+  INITIAL_CAR_BRANDS,
 } from './data/initialSheetsData';
 import { testConnection } from './services/firebase';
 import {
@@ -45,6 +47,7 @@ import {
   saveCarPartsToFirestore,
   saveMasterSopStagesToFirestore,
   saveDepartmentsToFirestore,
+  saveCarBrandsToFirestore,
 } from './services/firestoreService';
 import { DashboardView } from './components/DashboardView';
 import { JobsManagerView } from './components/JobsManagerView';
@@ -204,6 +207,18 @@ export default function App() {
     });
   });
 
+  const [carBrands, setCarBrands] = useState<MasterCarBrand[]>(() => {
+    const saved = localStorage.getItem('autofloor_car_brands');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return INITIAL_CAR_BRANDS;
+      }
+    }
+    return INITIAL_CAR_BRANDS;
+  });
+
   // Authentication State
   const [currentUser, setCurrentUser] = useState<SheetUser | null>(() => {
     const saved = localStorage.getItem('autofloor_session');
@@ -308,6 +323,9 @@ export default function App() {
       onDepartmentsChange: (newDepartments) => {
         setDepartments(newDepartments);
       },
+      onCarBrandsChange: (newBrands) => {
+        if (newBrands && newBrands.length > 0) setCarBrands(newBrands);
+      },
       onConnectionStatus: (connected) => {
         setIsFirebaseConnected(connected);
       },
@@ -358,6 +376,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('autofloor_departments', JSON.stringify(departments));
   }, [departments]);
+  useEffect(() => {
+    localStorage.setItem('autofloor_car_brands', JSON.stringify(carBrands));
+  }, [carBrands]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -686,6 +707,12 @@ export default function App() {
     setDepartments(newDepts);
     saveDepartmentsToFirestore(newDepts).catch((e) => console.error('Save departments error:', e));
     showToast('อัปเดตตารางแผนก Master Departments เรียบร้อยแล้ว');
+  };
+
+  const handleUpdateCarBrands = (newBrands: MasterCarBrand[]) => {
+    setCarBrands(newBrands);
+    saveCarBrandsToFirestore(newBrands).catch((e) => console.error('Save car brands error:', e));
+    showToast('อัปเดตรายการยี่ห้อและรุ่นรถมาตรฐานเรียบร้อยแล้ว');
   };
 
   const handleUpdateWorkCalendar = (newCalendar: SheetWorkCalendar[]) => {
@@ -1417,6 +1444,7 @@ export default function App() {
             carParts={carParts}
             masterSopStages={masterSopStages}
             departments={departments}
+            carBrands={carBrands}
             isCreateModalOpen={isCreateJobModalOpen}
             onOpenCreateModal={() => setIsCreateJobModalOpen(true)}
             onCloseCreateModal={() => setIsCreateJobModalOpen(false)}
@@ -1469,12 +1497,14 @@ export default function App() {
             carParts={carParts}
             masterSopStages={masterSopStages}
             departments={departments}
+            carBrands={carBrands}
             initialSubTab={settingsSubTab}
             currentUserRole={currentUser.Role}
             onUpdateSettings={handleUpdateSettings}
             onUpdateWorkCalendar={handleUpdateWorkCalendar}
             onUpdateTechLeaves={handleUpdateTechLeaves}
             onUpdateDepartments={handleUpdateDepartments}
+            onUpdateCarBrands={handleUpdateCarBrands}
             onAddUser={handleAddUser}
             onDeleteUser={handleDeleteUser}
             onEditUser={handleEditUser}

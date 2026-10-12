@@ -95,11 +95,36 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
     return emailList.includes(activeTechEmail.toLowerCase());
   });
 
-  // 1. Pending / In Progress Tasks sorted strictly by StartDate ascending (earliest first FIFO)
-  const pendingTasks = myAssignedTasks
-    .filter((t) => t.Status !== 'Completed')
+  // 1. In Progress Tasks: กำลังทำงานอยู่หรือกำลังจับเวลา (Active / In Progress)
+  const inProgressTasks = myAssignedTasks
+    .filter((t) => {
+      if (t.Status === 'Completed') return false;
+      const isRunning = activeSessions.some(
+        (s) =>
+          s.TaskID === t.TaskID &&
+          s.TechEmail.toLowerCase() === activeTechEmail.toLowerCase()
+      );
+      return isRunning || t.Status === 'In Progress';
+    })
     .sort((a, b) => {
-      // Sort primarily by StartDate (earliest date first)
+      const dateA = a.StartDate || '9999-99-99';
+      const dateB = b.StartDate || '9999-99-99';
+      return dateA.localeCompare(dateB);
+    });
+
+  // 2. Pending Tasks: งานที่รอดำเนินการ / พร้อมเริ่ม (Pending / Ready to Start)
+  const pendingTasks = myAssignedTasks
+    .filter((t) => {
+      if (t.Status === 'Completed') return false;
+      const isRunning = activeSessions.some(
+        (s) =>
+          s.TaskID === t.TaskID &&
+          s.TechEmail.toLowerCase() === activeTechEmail.toLowerCase()
+      );
+      return !isRunning && t.Status !== 'In Progress';
+    })
+    .sort((a, b) => {
+      // Sort primarily by StartDate (earliest date first FIFO)
       const dateA = a.StartDate || '9999-99-99';
       const dateB = b.StartDate || '9999-99-99';
       if (dateA !== dateB) {
@@ -114,7 +139,7 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
       return a.TaskID.localeCompare(b.TaskID);
     });
 
-  // 2. Completed Tasks sorted by DueDate descending (latest completed on top)
+  // 3. Completed Tasks: งานที่ทำเสร็จสมบูรณ์แล้ว
   const completedTasks = myAssignedTasks
     .filter((t) => t.Status === 'Completed')
     .sort((a, b) => {
@@ -287,13 +312,106 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
       {/* VIEW MODE 1: MASTER QUEUE SCREEN (เมื่อยังไม่ได้กดเลือกคันใดคันหนึ่ง) */}
       {!selectedTask ? (
         <div className="space-y-6">
-          {/* 1. ตารางชุดบน: งานที่รอดำเนินการ (เรียงตามกำหนดเริ่มงาน ลำดับก่อน-หลัง) */}
+          {/* 1. ตารางชุดที่ 1: งานที่กำลังทำอยู่ (จับเวลาอยู่ หรือ In Progress) */}
+          {inProgressTasks.length > 0 && (
+            <div className="bg-white border-2 border-emerald-400 rounded-2xl overflow-hidden shadow-xs ring-2 ring-emerald-500/10">
+              <div className="p-4 border-b border-emerald-200 flex items-center justify-between bg-emerald-50/70">
+                <div>
+                  <h3 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <Play className="w-4 h-4 fill-emerald-600 text-emerald-600" />
+                    1. งานที่กำลังดำเนินการอยู่ ({inProgressTasks.length} คัน)
+                  </h3>
+                  <p className="text-[11px] text-emerald-800 mt-0.5 font-medium">
+                    กำลังจับเวลาทำสีหรือเปิดงานค้างไว้ • แตะที่แถวเพื่อเข้าไปบันทึกหรือพักงาน
+                  </p>
+                </div>
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-600 text-white font-mono">
+                  ACTIVE ({inProgressTasks.length})
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-emerald-100/60 text-emerald-900 font-bold border-b border-emerald-200">
+                      <th className="py-2.5 px-3 whitespace-nowrap">เลขที่ JOB / ขั้นตอน</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap">ยี่ห้อ · รุ่น · สี (Vehicle)</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap">ทะเบียน</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap">เลขตัวถัง (VIN)</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap text-center">กำหนดเสร็จ</th>
+                      <th className="py-2.5 px-2 text-right"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-emerald-100 text-slate-700 bg-white">
+                    {inProgressTasks.map((task) => {
+                      const job = jobs.find((j) => j.JobID === task.JobID);
+                      const isRunning = activeSessions.some(
+                        (s) =>
+                          s.TaskID === task.TaskID &&
+                          s.TechEmail.toLowerCase() === activeTechEmail.toLowerCase()
+                      );
+
+                      return (
+                        <tr
+                          key={task.TaskID}
+                          onClick={() => setSelectedTaskId(task.TaskID)}
+                          className="cursor-pointer transition-colors bg-emerald-50/30 hover:bg-emerald-100/50 active:bg-emerald-200/50"
+                        >
+                          <td className="py-3.5 px-3 whitespace-nowrap font-mono font-bold text-emerald-800">
+                            <div className="flex items-center gap-1.5">
+                              {isRunning && (
+                                <span
+                                  className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0"
+                                  title="กำลังจับเวลา"
+                                ></span>
+                              )}
+                              <span>{job?.JobID || task.JobID}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-600 font-semibold block truncate max-w-[130px]">
+                              {task.TaskName.replace(' — ', ' · ')}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-3 whitespace-nowrap">
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                              <span>🚗 {job?.CarBrand || '-'} {job?.CarModel || ''}</span>
+                            </div>
+                            {job?.CarColor && (
+                              <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded mt-0.5 inline-block">
+                                สี: {job.CarColor}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-3 whitespace-nowrap font-bold text-slate-900">
+                            {job?.LicensePlate || '-'}
+                          </td>
+                          <td className="py-3.5 px-3 whitespace-nowrap font-mono text-[11px] text-slate-600">
+                            {job?.VIN || '-'}
+                          </td>
+                          <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono text-amber-700 font-semibold">
+                            <span className="bg-amber-50 px-2 py-0.5 rounded text-[11px]">
+                              {task.DueDate || '-'}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-2 text-right whitespace-nowrap">
+                            <ChevronRight className="w-4 h-4 text-emerald-600 inline font-bold" />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 2. ตารางชุดที่ 2: งานที่รอดำเนินการ / พร้อมเริ่ม (เรียงตามกำหนดเริ่มงาน ลำดับก่อน-หลัง) */}
           <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
             <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Clock className="w-4 h-4 text-blue-600" />
-                  งานที่รอดำเนินการ ({pendingTasks.length} รายการ)
+                  2. งานที่รอดำเนินการ / พร้อมเริ่ม ({pendingTasks.length} รายการ)
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   เรียงตามกำหนดเริ่มงาน (งานด่วนเริ่มก่อนอยู่บนสุด) • แตะที่แถวของรถเพื่อเปิดเข้าทำงาน
@@ -310,7 +428,8 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-100/80 text-slate-600 font-semibold border-b border-slate-200">
-                      <th className="py-2.5 px-3 whitespace-nowrap">เลขที่ JOB</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap">เลขที่ JOB / ขั้นตอน</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap">ยี่ห้อ · รุ่น · สี (Vehicle)</th>
                       <th className="py-2.5 px-3 whitespace-nowrap">ทะเบียน</th>
                       <th className="py-2.5 px-3 whitespace-nowrap">เลขตัวถัง (VIN)</th>
                       <th className="py-2.5 px-3 whitespace-nowrap text-center">กำหนดเริ่มงาน</th>
@@ -321,33 +440,28 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {pendingTasks.map((task) => {
                       const job = jobs.find((j) => j.JobID === task.JobID);
-                      const isRunning = activeSessions.some(
-                        (s) =>
-                          s.TaskID === task.TaskID &&
-                          s.TechEmail.toLowerCase() === activeTechEmail.toLowerCase()
-                      );
 
                       return (
                         <tr
                           key={task.TaskID}
                           onClick={() => setSelectedTaskId(task.TaskID)}
-                          className={`cursor-pointer transition-colors hover:bg-blue-50/40 active:bg-blue-100/50 ${
-                            isRunning ? 'bg-emerald-50/60 font-semibold' : ''
-                          }`}
+                          className="cursor-pointer transition-colors hover:bg-blue-50/40 active:bg-blue-100/50"
                         >
                           <td className="py-3.5 px-3 whitespace-nowrap font-mono font-bold text-blue-600">
-                            <div className="flex items-center gap-1.5">
-                              {isRunning && (
-                                <span
-                                  className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0"
-                                  title="กำลังจับเวลา"
-                                ></span>
-                              )}
-                              <span>{job?.JobID || task.JobID}</span>
-                            </div>
+                            <span>{job?.JobID || task.JobID}</span>
                             <span className="text-[10px] text-slate-500 font-normal block truncate max-w-[130px]">
                               {task.TaskName.replace(' — ', ' · ')}
                             </span>
+                          </td>
+                          <td className="py-3.5 px-3 whitespace-nowrap">
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                              <span>🚗 {job?.CarBrand || '-'} {job?.CarModel || ''}</span>
+                            </div>
+                            {job?.CarColor && (
+                              <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded mt-0.5 inline-block">
+                                สี: {job.CarColor}
+                              </span>
+                            )}
                           </td>
                           <td className="py-3.5 px-3 whitespace-nowrap font-bold text-slate-900">
                             {job?.LicensePlate || '-'}
@@ -377,13 +491,13 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
             )}
           </div>
 
-          {/* 2. ตารางชุดล่าง: งานที่เสร็จแล้ว */}
+          {/* 3. ตารางชุดที่ 3: งานที่เสร็จแล้ว */}
           <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
             <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  งานที่เสร็จแล้ว ({completedTasks.length} รายการ)
+                  3. งานที่เสร็จแล้ว ({completedTasks.length} รายการ)
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   ประวัติผลงานที่ส่งมอบขั้นตอนเสร็จสมบูรณ์เรียบร้อยแล้ว
@@ -400,7 +514,8 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-100/80 text-slate-600 font-semibold border-b border-slate-200">
-                      <th className="py-2.5 px-3 whitespace-nowrap">เลขที่ JOB</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap">เลขที่ JOB / ขั้นตอน</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap">ยี่ห้อ · รุ่น · สี (Vehicle)</th>
                       <th className="py-2.5 px-3 whitespace-nowrap">ทะเบียน</th>
                       <th className="py-2.5 px-3 whitespace-nowrap">เลขตัวถัง (VIN)</th>
                       <th className="py-2.5 px-3 whitespace-nowrap text-center">กำหนดเริ่มงาน</th>
@@ -423,6 +538,16 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                             <span className="text-[10px] text-slate-400 font-normal block truncate max-w-[130px]">
                               {task.TaskName.replace(' — ', ' · ')}
                             </span>
+                          </td>
+                          <td className="py-3.5 px-3 whitespace-nowrap">
+                            <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                              <span>🚗 {job?.CarBrand || '-'} {job?.CarModel || ''}</span>
+                            </div>
+                            {job?.CarColor && (
+                              <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded mt-0.5 inline-block">
+                                สี: {job.CarColor}
+                              </span>
+                            )}
                           </td>
                           <td className="py-3.5 px-3 whitespace-nowrap font-semibold text-slate-700">
                             {job?.LicensePlate || '-'}
@@ -545,10 +670,17 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                 <div className="p-4 border-b border-slate-100 space-y-2 bg-slate-50/70">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <span className="text-base font-bold text-slate-900 block truncate">
-                        🚗 {parentJob.LicensePlate}
-                      </span>
-                      <span className="text-[11px] font-mono text-slate-500 block mt-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-base font-bold text-slate-900">
+                          🚗 {parentJob.CarBrand || ''} {parentJob.CarModel || ''} {parentJob.LicensePlate}
+                        </span>
+                        {parentJob.CarColor && (
+                          <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-800 font-semibold border border-slate-300">
+                            สี: {parentJob.CarColor}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] font-mono text-slate-500 block mt-1">
                         {parentJob.JobID} · VIN: {parentJob.VIN}
                       </span>
                     </div>

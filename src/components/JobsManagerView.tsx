@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   SheetJob,
   SheetJobTask,
@@ -7,7 +7,9 @@ import {
   JobStatus,
   MasterSopStage,
   MasterDepartment,
+  MasterCarBrand,
 } from '../types/shopFloor';
+import { INITIAL_CAR_BRANDS } from '../data/initialSheetsData';
 import {
   Plus,
   Search,
@@ -21,6 +23,7 @@ import {
   CheckSquare,
   Square,
   AlertCircle,
+  Car,
 } from 'lucide-react';
 import { formatClockFromSeconds } from './DashboardView';
 
@@ -42,6 +45,7 @@ interface JobsManagerViewProps {
   carParts: string[];
   masterSopStages: MasterSopStage[];
   departments: MasterDepartment[];
+  carBrands?: MasterCarBrand[];
   isCreateModalOpen: boolean;
   onOpenCreateModal: () => void;
   onCloseCreateModal: () => void;
@@ -81,6 +85,7 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
   carParts,
   masterSopStages,
   departments: _departments,
+  carBrands = [],
   isCreateModalOpen,
   onOpenCreateModal,
   onCloseCreateModal,
@@ -93,12 +98,49 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<'ALL' | JobStatus>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
+  const effectiveCarBrands = useMemo(() => {
+    return carBrands && carBrands.length > 0 ? carBrands : INITIAL_CAR_BRANDS;
+  }, [carBrands]);
+
   // Detail Modal Popup state
   const [selectedJobForDetail, setSelectedJobForDetail] = useState<SheetJob | null>(null);
 
   // Edit Job State
   const [editingJob, setEditingJob] = useState<SheetJob | null>(null);
   const [editFormError, setEditFormError] = useState('');
+  const [editIsCustomBrand, setEditIsCustomBrand] = useState(false);
+  const [editIsCustomModel, setEditIsCustomModel] = useState(false);
+
+  // Sync edit custom brand/model modes when editingJob changes
+  useEffect(() => {
+    if (editingJob) {
+      const brandVal = (editingJob.CarBrand || '').trim();
+      const matchedBrand = effectiveCarBrands.find(
+        (b) => b.name.toLowerCase() === brandVal.toLowerCase()
+      );
+      if (brandVal && !matchedBrand) {
+        setEditIsCustomBrand(true);
+      } else {
+        setEditIsCustomBrand(false);
+      }
+
+      const modelVal = (editingJob.CarModel || '').trim();
+      if (matchedBrand) {
+        const matchedModel = matchedBrand.models.some(
+          (m) => m.toLowerCase() === modelVal.toLowerCase()
+        );
+        if (modelVal && !matchedModel) {
+          setEditIsCustomModel(true);
+        } else {
+          setEditIsCustomModel(false);
+        }
+      } else if (modelVal) {
+        setEditIsCustomModel(true);
+      } else {
+        setEditIsCustomModel(false);
+      }
+    }
+  }, [editingJob, effectiveCarBrands]);
 
   // Confirm Delete Job modal state
   const [jobToDelete, setJobToDelete] = useState<SheetJob | null>(null);
@@ -130,6 +172,11 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
   const [jobId, setJobId] = useState('');
   const [licensePlate, setLicensePlate] = useState('');
   const [vin, setVin] = useState('');
+  const [carBrand, setCarBrand] = useState('');
+  const [carModel, setCarModel] = useState('');
+  const [carColor, setCarColor] = useState('');
+  const [isCustomBrand, setIsCustomBrand] = useState(false);
+  const [isCustomModel, setIsCustomModel] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [jobType, setJobType] = useState('ทำสีเฉพาะจุด (Panel Paint)');
   const [jobDetails, setJobDetails] = useState('');
@@ -410,6 +457,9 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
           `ทำสีชิ้นส่วน: ${selectedParts.join(', ')} (${selectedParts.length} ชิ้น)`,
         DueDate: dueDate,
         DeliveryDate: deliveryDate,
+        CarBrand: carBrand.trim(),
+        CarModel: carModel.trim(),
+        CarColor: carColor.trim(),
       },
       formattedSubtasks
     );
@@ -418,6 +468,11 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
     setJobId('');
     setLicensePlate('');
     setVin('');
+    setCarBrand('');
+    setCarModel('');
+    setCarColor('');
+    setIsCustomBrand(false);
+    setIsCustomModel(false);
     setCustomerName('');
     setJobDetails('');
     onCloseCreateModal();
@@ -447,7 +502,10 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
       job.LicensePlate.toLowerCase().includes(q) ||
       job.VIN.toLowerCase().includes(q) ||
       job.CustomerName.toLowerCase().includes(q) ||
-      job.JobType.toLowerCase().includes(q)
+      job.JobType.toLowerCase().includes(q) ||
+      (job.CarBrand && job.CarBrand.toLowerCase().includes(q)) ||
+      (job.CarModel && job.CarModel.toLowerCase().includes(q)) ||
+      (job.CarColor && job.CarColor.toLowerCase().includes(q))
     );
   });
 
@@ -570,8 +628,18 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                           <span>{job.JobID}</span>
                         </div>
                       </td>
-                      <td className="py-3 px-3.5 font-bold text-slate-900 whitespace-nowrap">
-                        {job.LicensePlate || '-'}
+                      <td className="py-3 px-3.5 whitespace-nowrap">
+                        <div className="font-bold text-slate-900">{job.LicensePlate || '-'}</div>
+                        {(job.CarBrand || job.CarModel) && (
+                          <div className="text-[11px] font-semibold text-blue-700 flex items-center gap-1 mt-0.5">
+                            <span>🚗 {job.CarBrand} {job.CarModel}</span>
+                            {job.CarColor && (
+                              <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-normal">
+                                {job.CarColor}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-3.5 font-mono text-slate-600 whitespace-nowrap text-[11px]">
                         {job.VIN || '-'}
@@ -681,11 +749,16 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                 <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider bg-blue-50 px-2 py-0.5 rounded-sm">
                   รายละเอียดใบงานซ่อมสี (Job Sheet Detail)
                 </span>
-                <h2 className="text-xl font-bold text-slate-900 mt-1">
-                  {selectedJobForDetail.JobID} — {selectedJobForDetail.LicensePlate}
+                <h2 className="text-xl font-bold text-slate-900 mt-1 flex items-center gap-2 flex-wrap">
+                  <span>{selectedJobForDetail.JobID} — {selectedJobForDetail.LicensePlate}</span>
+                  {(selectedJobForDetail.CarBrand || selectedJobForDetail.CarModel) && (
+                    <span className="text-sm font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200">
+                      🚗 {selectedJobForDetail.CarBrand} {selectedJobForDetail.CarModel} {selectedJobForDetail.CarColor ? `(${selectedJobForDetail.CarColor})` : ''}
+                    </span>
+                  )}
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  VIN: {selectedJobForDetail.VIN} · ลูกค้า: {selectedJobForDetail.CustomerName} · กำหนดเสร็จ (อู่): {selectedJobForDetail.DueDate} · กำหนดส่งมอบ (SA): {selectedJobForDetail.DeliveryDate || '-'}
+                  VIN: {selectedJobForDetail.VIN} {selectedJobForDetail.CarColor ? `· สี: ${selectedJobForDetail.CarColor}` : ''} · ลูกค้า: {selectedJobForDetail.CustomerName} · กำหนดเสร็จ (อู่): {selectedJobForDetail.DueDate} · กำหนดส่งมอบ (SA): {selectedJobForDetail.DeliveryDate || '-'}
                 </p>
               </div>
               <button
@@ -853,6 +926,197 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 font-mono"
                 />
               </div>
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2.5">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-800">
+                  <span className="flex items-center gap-1.5">
+                    <Car className="w-4 h-4 text-blue-600" />
+                    ข้อมูลรถยนต์ (ยี่ห้อ ➔ รุ่น ➔ สี)
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    💡 ตั้งค่ายี่ห้อ/รุ่นได้ที่หน้าตั้งค่า
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {/* ยี่ห้อรถ (Edit) */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-700">ยี่ห้อรถ (Brand)</label>
+                      <button
+                        type="button"
+                        onClick={() => setEditIsCustomBrand(!editIsCustomBrand)}
+                        className="text-[10px] text-blue-600 hover:underline font-semibold cursor-pointer"
+                      >
+                        {editIsCustomBrand ? '📋 ลิสต์' : '✏️ พิมพ์เอง'}
+                      </button>
+                    </div>
+
+                    {!editIsCustomBrand ? (
+                      <select
+                        value={
+                          effectiveCarBrands.some((b) => b.name === (editingJob.CarBrand || ''))
+                            ? editingJob.CarBrand || ''
+                            : editingJob.CarBrand
+                            ? '__OTHER__'
+                            : ''
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__OTHER__') {
+                            setEditIsCustomBrand(true);
+                            setEditingJob({ ...editingJob, CarBrand: '', CarModel: '' });
+                            setEditIsCustomModel(true);
+                          } else {
+                            setEditIsCustomBrand(false);
+                            setEditingJob({ ...editingJob, CarBrand: val, CarModel: '' });
+                            setEditIsCustomModel(false);
+                          }
+                        }}
+                        className="w-full border border-slate-300 bg-white rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 cursor-pointer"
+                      >
+                        <option value="">-- เลือกยี่ห้อ --</option>
+                        {effectiveCarBrands.map((b) => (
+                          <option key={b.id} value={b.name}>
+                            {b.name} ({b.models.length} รุ่น)
+                          </option>
+                        ))}
+                        <option value="__OTHER__">+ อื่นๆ (พิมพ์ยี่ห้อเอง...)</option>
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={editingJob.CarBrand || ''}
+                        onChange={(e) => setEditingJob({ ...editingJob, CarBrand: e.target.value })}
+                        placeholder="เช่น Tesla, BYD..."
+                        className="w-full border border-blue-400 bg-blue-50/30 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600"
+                      />
+                    )}
+                  </div>
+
+                  {/* รุ่นรถ (Edit) */}
+                  <div>
+                    {(() => {
+                      const currentEditBrand = effectiveCarBrands.find(
+                        (b) => b.name.toLowerCase() === (editingJob.CarBrand || '').toLowerCase()
+                      );
+                      const hasBrandModels = !!(currentEditBrand && currentEditBrand.models.length > 0);
+
+                      return (
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-xs font-semibold text-slate-700">รุ่นรถ (Model)</label>
+                            {hasBrandModels && !editIsCustomBrand && (
+                              <button
+                                type="button"
+                                onClick={() => setEditIsCustomModel(!editIsCustomModel)}
+                                className="text-[10px] text-blue-600 hover:underline font-semibold cursor-pointer"
+                              >
+                                {editIsCustomModel ? '📋 ลิสต์' : '✏️ พิมพ์เอง'}
+                              </button>
+                            )}
+                          </div>
+
+                          {hasBrandModels && !editIsCustomBrand && !editIsCustomModel ? (
+                            <select
+                              value={
+                                currentEditBrand.models.includes(editingJob.CarModel || '')
+                                  ? editingJob.CarModel || ''
+                                  : editingJob.CarModel
+                                  ? '__OTHER__'
+                                  : ''
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === '__OTHER__') {
+                                  setEditIsCustomModel(true);
+                                  setEditingJob({ ...editingJob, CarModel: '' });
+                                } else {
+                                  setEditingJob({ ...editingJob, CarModel: val });
+                                }
+                              }}
+                              className="w-full border border-slate-300 bg-white rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 cursor-pointer"
+                            >
+                              <option value="">-- เลือกรุ่น ({currentEditBrand.name}) --</option>
+                              {currentEditBrand.models.map((m) => (
+                                <option key={m} value={m}>
+                                  {m}
+                                </option>
+                              ))}
+                              <option value="__OTHER__">+ อื่นๆ (พิมพ์รุ่นเอง...)</option>
+                            </select>
+                          ) : (
+                            <div>
+                              <input
+                                type="text"
+                                value={editingJob.CarModel || ''}
+                                onChange={(e) => setEditingJob({ ...editingJob, CarModel: e.target.value })}
+                                placeholder={
+                                  currentEditBrand
+                                    ? `ระบุรุ่นของ ${currentEditBrand.name}...`
+                                    : 'เช่น Hilux Revo, Civic...'
+                                }
+                                list={currentEditBrand ? 'edit-job-models-list' : undefined}
+                                className={`w-full border rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600 ${
+                                  editIsCustomModel
+                                    ? 'border-blue-400 bg-blue-50/30'
+                                    : 'border-slate-300 bg-white'
+                                }`}
+                              />
+                              {currentEditBrand && (
+                                <datalist id="edit-job-models-list">
+                                  {currentEditBrand.models.map((m) => (
+                                    <option key={m} value={m} />
+                                  ))}
+                                </datalist>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* สีรถ (Edit) */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">สีรถ (Color)</label>
+                    <input
+                      type="text"
+                      value={editingJob.CarColor || ''}
+                      onChange={(e) => setEditingJob({ ...editingJob, CarColor: e.target.value })}
+                      placeholder="เช่น ขาวมุก, ดำเงา"
+                      list="edit-job-colors-list"
+                      className="w-full border border-slate-300 bg-white rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600"
+                    />
+                    <datalist id="edit-job-colors-list">
+                      <option value="ขาวมุก (Pearl White)" />
+                      <option value="ขาว (Solid White)" />
+                      <option value="ดำเงา (Black)" />
+                      <option value="บรอนซ์เงิน (Silver)" />
+                      <option value="เทาดำ (Grey)" />
+                      <option value="แดง (Red)" />
+                      <option value="น้ำเงิน (Blue)" />
+                    </datalist>
+
+                    {/* Quick color pills */}
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {['ขาวมุก', 'ดำเงา', 'บรอนซ์เงิน', 'เทาดำ'].map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setEditingJob({ ...editingJob, CarColor: c })}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border transition-colors cursor-pointer ${
+                            editingJob.CarColor === c
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
                   ชื่อลูกค้า (ไม่บังคับระบุ)
@@ -1015,6 +1279,221 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                   <span className="text-[10px] text-slate-500 mt-0.5 block">
                     กรณีไม่มีป้ายทะเบียน ให้ใส่ VIN
                   </span>
+                </div>
+
+                {/* ข้อมูลรถ: ยี่ห้อ, รุ่น, สี (Connected Cascading Dropdown / Datalist) */}
+                <div className="md:col-span-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Car className="w-4 h-4 text-blue-600" />
+                      ข้อมูลรถยนต์ (เชื่อมโยงอัตโนมัติ ยี่ห้อ ➔ รุ่น)
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      💡 จัดการยี่ห้อและรุ่นรถได้ที่เมนู <strong>&quot;ตั้งค่าระบบ&quot;</strong>
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* ยี่ห้อรถ (Brand) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold text-slate-900">
+                          ยี่ห้อรถ (Brand)
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCustomBrand(!isCustomBrand);
+                            if (!isCustomBrand) {
+                              setIsCustomModel(true);
+                            }
+                          }}
+                          className="text-[10px] text-blue-600 hover:underline font-semibold cursor-pointer"
+                        >
+                          {isCustomBrand ? '📋 เลือกจากลิสต์' : '✏️ พิมพ์ยี่ห้อเอง'}
+                        </button>
+                      </div>
+
+                      {!isCustomBrand ? (
+                        <select
+                          value={
+                            effectiveCarBrands.some((b) => b.name === carBrand)
+                              ? carBrand
+                              : carBrand
+                              ? '__OTHER__'
+                              : ''
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '__OTHER__') {
+                              setIsCustomBrand(true);
+                              setCarBrand('');
+                              setIsCustomModel(true);
+                              setCarModel('');
+                            } else {
+                              setIsCustomBrand(false);
+                              setCarBrand(val);
+                              setIsCustomModel(false);
+                              setCarModel('');
+                            }
+                          }}
+                          className="w-full border border-slate-300 bg-white rounded-lg px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600 cursor-pointer"
+                        >
+                          <option value="">-- เลือกยี่ห้อรถ --</option>
+                          {effectiveCarBrands.map((b) => (
+                            <option key={b.id} value={b.name}>
+                              {b.name} ({b.models.length} รุ่น)
+                            </option>
+                          ))}
+                          <option value="__OTHER__">+ อื่นๆ (ระบุยี่ห้อเอง...)</option>
+                        </select>
+                      ) : (
+                        <div className="space-y-1">
+                          <input
+                            type="text"
+                            value={carBrand}
+                            onChange={(e) => setCarBrand(e.target.value)}
+                            placeholder="ระบุยี่ห้อ เช่น Tesla, Changan..."
+                            className="w-full border border-blue-400 bg-blue-50/30 rounded-lg px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                            autoFocus
+                          />
+                          <span className="text-[10px] text-blue-600 block">
+                            โหมดพิมพ์เองอิสระ
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* รุ่นรถ (Model) - Cascading */}
+                    <div>
+                      {(() => {
+                        const matchedBrand = effectiveCarBrands.find(
+                          (b) => b.name.toLowerCase() === (carBrand || '').toLowerCase()
+                        );
+                        const hasBrandModels = !!(matchedBrand && matchedBrand.models.length > 0);
+
+                        return (
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="block text-xs font-bold text-slate-900">
+                                รุ่นรถ (Model)
+                              </label>
+                              {hasBrandModels && !isCustomBrand && (
+                                <button
+                                  type="button"
+                                  onClick={() => setIsCustomModel(!isCustomModel)}
+                                  className="text-[10px] text-blue-600 hover:underline font-semibold cursor-pointer"
+                                >
+                                  {isCustomModel ? '📋 เลือกจากลิสต์' : '✏️ พิมพ์รุ่นเอง'}
+                                </button>
+                              )}
+                            </div>
+
+                            {hasBrandModels && !isCustomBrand && !isCustomModel ? (
+                              <select
+                                value={
+                                  matchedBrand.models.includes(carModel)
+                                    ? carModel
+                                    : carModel
+                                    ? '__OTHER__'
+                                    : ''
+                                }
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === '__OTHER__') {
+                                    setIsCustomModel(true);
+                                    setCarModel('');
+                                  } else {
+                                    setCarModel(val);
+                                  }
+                                }}
+                                className="w-full border border-slate-300 bg-white rounded-lg px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600 cursor-pointer"
+                              >
+                                <option value="">-- เลือกรุ่นรถ ({matchedBrand.name}) --</option>
+                                {matchedBrand.models.map((m) => (
+                                  <option key={m} value={m}>
+                                    {m}
+                                  </option>
+                                ))}
+                                <option value="__OTHER__">+ อื่นๆ (ระบุรุ่นเอง...)</option>
+                              </select>
+                            ) : (
+                              <div>
+                                <input
+                                  type="text"
+                                  value={carModel}
+                                  onChange={(e) => setCarModel(e.target.value)}
+                                  placeholder={
+                                    matchedBrand
+                                      ? `ระบุรุ่นของ ${matchedBrand.name}...`
+                                      : 'ระบุรุ่น เช่น Hilux Revo, Civic...'
+                                  }
+                                  list={matchedBrand ? 'create-job-models-list' : undefined}
+                                  className={`w-full border rounded-lg px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600 ${
+                                    isCustomModel
+                                      ? 'border-blue-400 bg-blue-50/30'
+                                      : 'border-slate-300 bg-white'
+                                  }`}
+                                />
+                                {matchedBrand && (
+                                  <datalist id="create-job-models-list">
+                                    {matchedBrand.models.map((m) => (
+                                      <option key={m} value={m} />
+                                    ))}
+                                  </datalist>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* สีรถ (Color) */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-900 mb-1">
+                        สีรถ (Color)
+                      </label>
+                      <input
+                        type="text"
+                        value={carColor}
+                        onChange={(e) => setCarColor(e.target.value)}
+                        placeholder="เช่น ขาวมุก, ดำเงา, บรอนซ์เงิน"
+                        list="create-job-colors-list"
+                        className="w-full border border-slate-300 bg-white rounded-lg px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-blue-600"
+                      />
+                      <datalist id="create-job-colors-list">
+                        <option value="ขาวมุก (Pearl White)" />
+                        <option value="ขาว (Solid White)" />
+                        <option value="ดำเงา (Black)" />
+                        <option value="บรอนซ์เงิน (Silver)" />
+                        <option value="เทาดำ (Grey)" />
+                        <option value="แดง (Red)" />
+                        <option value="น้ำเงิน (Blue)" />
+                        <option value="บรอนซ์ทอง (Gold)" />
+                        <option value="เขียว (Green)" />
+                        <option value="ส้ม (Orange)" />
+                      </datalist>
+
+                      {/* Quick 1-click color pills */}
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {['ขาวมุก', 'ดำเงา', 'บรอนซ์เงิน', 'เทาดำ', 'แดง', 'น้ำเงิน'].map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setCarColor(c)}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border transition-colors cursor-pointer ${
+                              carColor === c
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {c}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* 4. วันกำหนดรถเสร็จ (Controller กำหนด) */}
