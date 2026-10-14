@@ -14,6 +14,7 @@ import {
   MasterDepartment,
   MasterCarBrand,
   TechLeave,
+  HelpRequest,
 } from './types/shopFloor';
 import {
   INITIAL_USERS,
@@ -51,6 +52,8 @@ import {
   deleteDepartmentFromFirestore,
   saveCarBrandsToFirestore,
   deleteCarBrandFromFirestore,
+  saveHelpRequestToFirestore,
+  deleteHelpRequestFromFirestore,
 } from './services/firestoreService';
 import { DashboardView } from './components/DashboardView';
 import { JobsManagerView } from './components/JobsManagerView';
@@ -198,6 +201,14 @@ export default function App() {
     return saved ? JSON.parse(saved) : INITIAL_TECH_LEAVES;
   });
 
+  const [helpRequests, setHelpRequests] = useState<HelpRequest[]>(() => {
+    const saved = localStorage.getItem('autofloor_helprequests');
+    return saved ? JSON.parse(saved) : [];
+  });
+  useEffect(() => {
+    localStorage.setItem('autofloor_helprequests', JSON.stringify(helpRequests));
+  }, [helpRequests]);
+
   const [departments, setDepartments] = useState<MasterDepartment[]>(() => {
     const saved = localStorage.getItem('autofloor_departments');
     const raw: MasterDepartment[] = saved ? JSON.parse(saved) : INITIAL_DEPARTMENTS;
@@ -328,6 +339,9 @@ export default function App() {
       },
       onCarBrandsChange: (newBrands) => {
         if (newBrands && newBrands.length > 0) setCarBrands(newBrands);
+      },
+      onHelpRequestsChange: (newRequests) => {
+        setHelpRequests(newRequests);
       },
       onConnectionStatus: (connected) => {
         setIsFirebaseConnected(connected);
@@ -754,6 +768,7 @@ export default function App() {
     localStorage.setItem('autofloor_techleaves', JSON.stringify(remaining));
     try {
       await deleteTechLeaveFromFirestore(leaveId);
+      await saveTechLeavesToFirestore(remaining);
       showToast('ลบประวัติวันลาเรียบร้อยแล้ว');
     } catch (e) {
       console.error('Delete tech leave error:', e);
@@ -773,6 +788,86 @@ export default function App() {
       });
     }
     showToast('อัปเดตตารางวันลา/วันหยุดช่างรายบุคคลเรียบร้อยแล้ว');
+  };
+
+  const handleRequestHelp = (taskId: string, jobId: string, requesterEmail: string) => {
+    const newReq: HelpRequest = {
+      RequestID: `REQ-${Date.now()}`,
+      TaskID: taskId,
+      JobID: jobId,
+      RequesterEmail: requesterEmail.trim().toLowerCase(),
+      Status: 'Pending',
+      Timestamp: new Date().toISOString(),
+    };
+    const next = [...helpRequests, newReq];
+    setHelpRequests(next);
+    saveHelpRequestToFirestore(newReq).catch((e) => console.error(e));
+    showToast('ส่งคำขอเข้าช่วยงานไปยัง Controller เรียบร้อยแล้ว');
+  };
+
+  const handleApproveHelp = (requestId: string) => {
+    const req = helpRequests.find((r) => r.RequestID === requestId);
+    if (!req) return;
+    const updatedReq: HelpRequest = { ...req, Status: 'Approved' };
+    const nextReqs = helpRequests.map((r) => (r.RequestID === requestId ? updatedReq : r));
+    setHelpRequests(nextReqs);
+    saveHelpRequestToFirestore(updatedReq).catch((e) => console.error(e));
+
+    const task = jobTasks.find((t) => t.TaskID === req.TaskID);
+    if (task) {
+      const currentTechs = task.AssignedTechs.split(',').map((s) => s.trim()).filter(Boolean);
+      if (!currentTechs.map((e) => e.toLowerCase()).includes(req.RequesterEmail.toLowerCase())) {
+        currentTechs.push(req.RequesterEmail);
+        const updatedTask: SheetJobTask = {
+          ...task,
+          AssignedTechs: currentTechs.join(', '),
+        };
+        setJobTasks((prev) => prev.map((t) => (t.TaskID === task.TaskID ? updatedTask : t)));
+        saveJobTaskToFirestore(updatedTask).catch((e) => console.error(e));
+      }
+    }
+    showToast('อนุมัติคำขอเข้าช่วยงานเรียบร้อยแล้ว');
+  };
+
+  const handleRejectHelp = (requestId: string) => {
+    const req = helpRequests.find((r) => r.RequestID === requestId);
+    if (!req) return;
+    const updatedReq: HelpRequest = { ...req, Status: 'Rejected' };
+    const nextReqs = helpRequests.map((r) => (r.RequestID === requestId ? updatedReq : r));
+    setHelpRequests(nextReqs);
+    saveHelpRequestToFirestore(updatedReq).catch((e) => console.error(e));
+    showToast('ปฏิเสธคำขอเข้าช่วยงานแล้ว');
+  };
+
+  const handleUpdateTaskAssignedTechs = (taskId: string, newAssignedTechs: string[]) => {
+    const task = jobTasks.find((t) => t.TaskID === taskId);
+    if (!task) return;
+    const updatedTask: SheetJobTask = {
+      ...task,
+      AssignedTechs: newAssignedTechs.join(', '),
+    };
+    setJobTasks((prev) => prev.map((t) => (t.TaskID === taskId ? updatedTask : t)));
+    saveJobTaskToFirestore(updatedTask).catch((e) => console.error(e));
+    showToast(`อัปเดตช่างผู้รับผิดชอบขั้นตอน ${taskId} สำเร็จ`);
+  };
+
+  const handleUpdateTaskSchedule = (taskId: string, startDate: string, dueDate: string) => {
+    const task = jobTasks.find((t) => t.TaskID === taskId);
+    if (!task) return;
+    const updatedTask: SheetJobTask = {
+      ...task,
+      StartDate: startDate,
+      DueDate: dueDate,
+    };
+    setJobTasks((prev) => prev.map((t) => (t.TaskID === taskId ? updatedTask : t)));
+    saveJobTaskToFirestore(updatedTask).catch((e) => console.error(e));
+    showToast(`อัปเดตกำหนดการเริ่ม-เสร็จขั้นตอน ${task.TaskName || taskId} เรียบร้อยแล้ว`);
+  };
+
+  const handleDeleteJobTask = (taskId: string) => {
+    setJobTasks((prev) => prev.filter((t) => t.TaskID !== taskId));
+    deleteJobTaskFromFirestore(taskId).catch((e) => console.error(e));
+    showToast(`ลบขั้นตอน ${taskId} เรียบร้อยแล้ว`);
   };
 
   const handleUpdateSettings = (newSettings: SheetSetting[]) => {
@@ -1493,6 +1588,13 @@ export default function App() {
             masterSopStages={masterSopStages}
             departments={departments}
             carBrands={carBrands}
+            helpRequests={helpRequests}
+            onApproveHelp={handleApproveHelp}
+            onRejectHelp={handleRejectHelp}
+            onUpdateTaskAssignedTechs={handleUpdateTaskAssignedTechs}
+            onUpdateTaskSchedule={handleUpdateTaskSchedule}
+            onDeleteJobTask={handleDeleteJobTask}
+            timeLogs={timeLogs}
             isCreateModalOpen={isCreateJobModalOpen}
             onOpenCreateModal={() => setIsCreateJobModalOpen(true)}
             onCloseCreateModal={() => setIsCreateJobModalOpen(false)}
@@ -1516,6 +1618,8 @@ export default function App() {
             nowMs={nowMs}
             selectedTechEmail={selectedTechEmail}
             onChangeSelectedTechEmail={setSelectedTechEmail}
+            helpRequests={helpRequests}
+            onRequestHelp={handleRequestHelp}
             onRecordTimeAction={handleRecordTimeAction}
             onUpdateTaskChecklist={handleUpdateTaskChecklist}
           />

@@ -1,6 +1,6 @@
 {
-  "summary":  "แผนการอัปเกรดระบบเพื่อรองรับการแตกรายการงานย่อยด้วยเทมเพลตอัตโนมัติใน 1 คลิก (One-Click Task Templates) ตามประเภทงานหลัก ช่วยประหยัดเวลาของ Controller และรักษามาตรฐานของข้อมูลเพื่อนำไปคำนวณ % Efficiency ได้อย่างสมบูรณ์แบบ",
-  "updatedAt":  "2026-10-06T09:58:23.822925024Z",
-  "requestFeedback":  true,
-  "userFacing":  true
+  "summary": "เพิ่มระบบติดตามกำหนดการทำงานช่าง (Target Schedule Adherence Tracking) และระบบแก้ไขวันเริ่ม-เสร็จของขั้นตอนงานสำหรับ Controller เรียบร้อยแล้ว",
+  "updatedAt": "2026-10-14T03:03:45.474861460Z",
+  "requestFeedback": true,
+  "userFacing": true
 }

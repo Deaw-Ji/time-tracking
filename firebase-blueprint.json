@@ -137,6 +137,31 @@
         "description": { "type": "string", "description": "Department description" }
       },
       "required": ["id", "name"]
+    },
+    "carBrand": {
+      "title": "CarBrand",
+      "description": "Vehicle brand master record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Brand ID" },
+        "name": { "type": "string", "description": "Brand name" }
+      },
+      "required": ["id", "name"]
+    },
+    "helpRequest": {
+      "title": "HelpRequest",
+      "description": "Technician assistance request for jobs and tasks",
+      "type": "object",
+      "properties": {
+        "RequestID": { "type": "string", "description": "Unique help request identifier" },
+        "TaskID": { "type": "string", "description": "Target task ID" },
+        "JobID": { "type": "string", "description": "Target job work order ID" },
+        "RequesterEmail": { "type": "string", "description": "Email of requesting technician" },
+        "OwnerEmail": { "type": "string", "description": "Email of task owner" },
+        "Status": { "type": "string", "enum": ["Pending", "Approved", "Rejected"], "description": "Approval status" },
+        "Timestamp": { "type": "string", "description": "ISO-8601 timestamp" }
+      },
+      "required": ["RequestID", "TaskID", "JobID", "RequesterEmail", "Status", "Timestamp"]
     }
   },
   "firestore": {
@@ -179,6 +204,14 @@
     "/departments/{deptId}": {
       "schema": "department",
       "description": "Workshop master departments"
+    },
+    "/carBrands/{brandId}": {
+      "schema": "carBrand",
+      "description": "Master car brands and models"
+    },
+    "/helpRequests/{requestId}": {
+      "schema": "helpRequest",
+      "description": "Technician help requests between tasks"
     }
   }
 }

@@ -3,11 +3,13 @@ import {
   SheetJob,
   SheetJobTask,
   SheetUser,
+  SheetTimeLog,
   ActiveTechSession,
   JobStatus,
   MasterSopStage,
   MasterDepartment,
   MasterCarBrand,
+  HelpRequest,
 } from '../types/shopFloor';
 import { INITIAL_CAR_BRANDS } from '../data/initialSheetsData';
 import {
@@ -24,8 +26,10 @@ import {
   Square,
   AlertCircle,
   Car,
+  Calendar,
 } from 'lucide-react';
 import { formatClockFromSeconds } from './DashboardView';
+import { getTaskScheduleAdherence, formatThaiDate } from '../utils/scheduleHelper';
 
 export interface NewSubtaskFormItem {
   TaskName: string;
@@ -74,6 +78,13 @@ interface JobsManagerViewProps {
   onDeleteJob: (jobId: string) => void;
   onEditJob: (job: SheetJob) => void;
   onClearAllJobs?: () => void;
+  helpRequests?: HelpRequest[];
+  onApproveHelp?: (requestId: string) => void;
+  onRejectHelp?: (requestId: string) => void;
+  onUpdateTaskAssignedTechs?: (taskId: string, newAssignedTechs: string[]) => void;
+  onUpdateTaskSchedule?: (taskId: string, startDate: string, dueDate: string) => void;
+  onDeleteJobTask?: (taskId: string) => void;
+  timeLogs?: SheetTimeLog[];
 }
 
 export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
@@ -94,9 +105,18 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
   onDeleteJob,
   onEditJob,
   onClearAllJobs,
+  helpRequests = [],
+  onApproveHelp = () => {},
+  onRejectHelp = () => {},
+  onUpdateTaskAssignedTechs,
+  onUpdateTaskSchedule,
+  onDeleteJobTask,
+  timeLogs = [],
 }) => {
   const [statusFilter, setStatusFilter] = useState<'ALL' | JobStatus>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const [editingTaskTechsId, setEditingTaskTechsId] = useState<string | null>(null);
+  const [draftTaskTechs, setDraftTaskTechs] = useState<string[]>([]);
 
   const effectiveCarBrands = useMemo(() => {
     return carBrands && carBrands.length > 0 ? carBrands : INITIAL_CAR_BRANDS;
@@ -148,6 +168,19 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
   // Confirm Clear All Jobs modal state
   const [showClearAllJobsModal, setShowClearAllJobsModal] = useState(false);
 
+  // Confirm Delete Task modal state
+  const [taskToDelete, setTaskToDelete] = useState<SheetJobTask | null>(null);
+
+  // Edit Task Assigned Techs modal state
+  const [editingTaskAssignedTechs, setEditingTaskAssignedTechs] = useState<SheetJobTask | null>(null);
+  const [tempAssignedTechEmails, setTempAssignedTechEmails] = useState<string[]>([]);
+
+  // Edit Task Schedule modal state (วันกำหนดให้ช่างเริ่มและเสร็จ)
+  const [editingTaskSchedule, setEditingTaskSchedule] = useState<SheetJobTask | null>(null);
+  const [editTaskStartDate, setEditTaskStartDate] = useState('');
+  const [editTaskDueDate, setEditTaskDueDate] = useState('');
+  const [scheduleModalError, setScheduleModalError] = useState('');
+
   // Lock body scroll when any modal in JobsManagerView is active to prevent background scroll jumps
   useEffect(() => {
     const isAnyModalOpen =
@@ -155,7 +188,10 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
       !!selectedJobForDetail ||
       !!editingJob ||
       !!jobToDelete ||
-      showClearAllJobsModal;
+      showClearAllJobsModal ||
+      !!editingTaskAssignedTechs ||
+      !!editingTaskSchedule ||
+      !!taskToDelete;
     if (isAnyModalOpen) {
       document.body.style.overflow = 'hidden';
     } else {
@@ -164,7 +200,16 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
     return () => {
       document.body.style.overflow = '';
     };
-  }, [isCreateModalOpen, selectedJobForDetail, editingJob, jobToDelete, showClearAllJobsModal]);
+  }, [
+    isCreateModalOpen,
+    selectedJobForDetail,
+    editingJob,
+    jobToDelete,
+    showClearAllJobsModal,
+    editingTaskAssignedTechs,
+    editingTaskSchedule,
+    taskToDelete,
+  ]);
 
   const technicians = users.filter((u) => u.Role === 'Technician' && u.Status === 'Active');
 
@@ -542,6 +587,55 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
         </div>
       </div>
 
+      {/* Pending Help Requests Banner for Controller */}
+      {helpRequests && helpRequests.filter((r) => r.Status === 'Pending').length > 0 && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-3 shadow-xs animate-fadeIn">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
+              <AlertCircle className="w-4 h-4 text-amber-600" />
+              <span>คำขอเข้าช่วยงานจากช่าง ({helpRequests.filter((r) => r.Status === 'Pending').length} คำขอรออนุมัติ)</span>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {helpRequests
+              .filter((r) => r.Status === 'Pending')
+              .map((req) => {
+                const task = jobTasks.find((t) => t.TaskID === req.TaskID);
+                const job = jobs.find((j) => j.JobID === req.JobID);
+                const requester = users.find((u) => u.Email.toLowerCase() === req.RequesterEmail.toLowerCase());
+                return (
+                  <div key={req.RequestID} className="bg-white border border-amber-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
+                    <div>
+                      <div className="font-bold text-slate-900">
+                        ช่าง {requester ? `${requester.Name} (${requester.Department})` : req.RequesterEmail} ขอเข้าช่วยงาน
+                      </div>
+                      <div className="text-slate-600 text-[11px] mt-0.5">
+                        JOB: <span className="font-mono font-bold text-blue-600">{req.JobID}</span> · ขั้นตอน: {task?.TaskName || req.TaskID} ({job?.LicensePlate || ''})
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onApproveHelp?.(req.RequestID)}
+                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer shadow-2xs"
+                      >
+                        ✓ ออนุมัติให้ช่วยงาน
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onRejectHelp?.(req.RequestID)}
+                        className="px-3.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg text-xs transition-colors cursor-pointer"
+                      >
+                        ✕ ปฏิเสธ
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
       {/* Filter & Search Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-1 p-1 bg-slate-200/70 rounded-lg overflow-x-auto">
@@ -790,6 +884,7 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                       <tr className="bg-slate-100/80 text-slate-600 font-semibold border-b border-slate-200">
                         <th className="py-2.5 px-3">ขั้นตอน (TaskName)</th>
                         <th className="py-2.5 px-3">ช่างผู้รับผิดชอบ</th>
+                        <th className="py-2.5 px-3">กำหนดการช่าง & ติดตามเริ่มงาน</th>
                         <th className="py-2.5 px-3">ชิ้นส่วน (Checklist)</th>
                         <th className="py-2.5 px-3 text-center">สถานะ</th>
                         <th className="py-2.5 px-3 text-right">เวลาจริง / SLA</th>
@@ -800,6 +895,7 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                         .filter((t) => t.JobID === selectedJobForDetail.JobID)
                         .map((task) => {
                           const isRunning = activeSessions.some((s) => s.TaskID === task.TaskID);
+                          const adherence = getTaskScheduleAdherence(task, timeLogs);
                           const parts = task.PartsChecklist
                             ? task.PartsChecklist.split(',').map((p) => {
                                 const [name, state] = p.split(':');
@@ -819,9 +915,72 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                                 </span>
                               </td>
                               <td className="py-3 px-3">
-                                <span className="text-slate-700 text-[11px] block max-w-[130px] truncate">
-                                  {task.AssignedTechs || '-'}
-                                </span>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-slate-700 text-[11px] block max-w-[120px] truncate" title={task.AssignedTechs}>
+                                    {task.AssignedTechs || '-'}
+                                  </span>
+                                  {onUpdateTaskAssignedTechs && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingTaskAssignedTechs(task);
+                                        const current = task.AssignedTechs
+                                          ? task.AssignedTechs.split(',').map((s) => s.trim()).filter(Boolean)
+                                          : [];
+                                        setTempAssignedTechEmails(current);
+                                      }}
+                                      className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors shrink-0"
+                                      title="แก้ไขช่างผู้รับผิดชอบขั้นตอนงานนี้"
+                                    >
+                                      <Edit2 className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-3 px-3">
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between gap-1.5">
+                                    <div className="text-[11px] font-mono text-slate-800 flex items-center gap-1.5">
+                                      <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                      <span className="font-semibold text-slate-900" title={`กำหนดเริ่ม: ${task.StartDate || '-'}`}>
+                                        {formatThaiDate(task.StartDate)}
+                                      </span>
+                                      <span className="text-slate-400">➔</span>
+                                      <span className="font-semibold text-amber-800" title={`กำหนดเสร็จ: ${task.DueDate || '-'}`}>
+                                        {formatThaiDate(task.DueDate)}
+                                      </span>
+                                    </div>
+                                    {onUpdateTaskSchedule && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingTaskSchedule(task);
+                                          setEditTaskStartDate(task.StartDate || selectedJobForDetail.DueDate);
+                                          setEditTaskDueDate(task.DueDate || selectedJobForDetail.DueDate);
+                                          setScheduleModalError('');
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors shrink-0 cursor-pointer"
+                                        title="แก้ไขวันกำหนดให้ช่างเริ่มและเสร็จของขั้นตอนนี้"
+                                      >
+                                        <Edit2 className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap gap-1">
+                                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${adherence.startAdherence.badgeClass}`}>
+                                      {adherence.startAdherence.label}
+                                    </span>
+                                    {task.Status === 'Completed' ? (
+                                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${adherence.dueAdherence.badgeClass}`}>
+                                        {adherence.dueAdherence.label}
+                                      </span>
+                                    ) : adherence.dueAdherence.status === 'in-progress-overdue' ? (
+                                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${adherence.dueAdherence.badgeClass}`}>
+                                        {adherence.dueAdherence.label}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </div>
                               </td>
                               <td className="py-3 px-3">
                                 {parts.length === 0 ? (
@@ -858,8 +1017,22 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                                   {task.Status}
                                 </span>
                               </td>
-                              <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
-                                {task.TotalMinutes} / {task.StandardMinutes} น.
+                              <td className="py-3 px-3 text-right whitespace-nowrap">
+                                <div className="flex items-center justify-end gap-2">
+                                  <span className="font-mono font-bold text-slate-900">
+                                    {task.TotalMinutes} / {task.StandardMinutes} น.
+                                  </span>
+                                  {onDeleteJobTask && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setTaskToDelete(task)}
+                                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                      title="ลบขั้นตอนนี้"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
@@ -878,6 +1051,233 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                 className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
               >
                 ปิดหน้าต่าง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT TASK ASSIGNED TECHS MODAL */}
+      {editingTaskAssignedTechs && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-hidden animate-fadeIn">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-scaleUp">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
+                <Wrench className="w-4 h-4 text-blue-600" />
+                <span>แก้ไขช่างผู้รับผิดชอบ: {editingTaskAssignedTechs.TaskName}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingTaskAssignedTechs(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <p className="text-slate-500 font-medium">
+                เลือกรายชื่อช่างที่ต้องการมอบหมายให้รับผิดชอบในขั้นตอนงานนี้ (สามารถเลือกได้หลายคน):
+              </p>
+
+              <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl p-2 bg-slate-50">
+                {technicians.length === 0 ? (
+                  <div className="p-4 text-center text-slate-400">ไม่พบรายชื่อช่างในระบบ</div>
+                ) : (
+                  technicians.map((tech) => {
+                    const isSelected = tempAssignedTechEmails.map((e) => e.toLowerCase()).includes(tech.Email.toLowerCase());
+                    return (
+                      <label
+                        key={tech.UserID}
+                        className="flex items-center justify-between p-2.5 hover:bg-white rounded-lg cursor-pointer transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setTempAssignedTechEmails([...tempAssignedTechEmails, tech.Email]);
+                              } else {
+                                setTempAssignedTechEmails(
+                                  tempAssignedTechEmails.filter((email) => email.toLowerCase() !== tech.Email.toLowerCase())
+                                );
+                              }
+                            }}
+                            className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                          />
+                          <div>
+                            <span className="font-bold text-slate-900 block">{tech.Name} ({tech.Nickname})</span>
+                            <span className="text-[10px] text-slate-500">{tech.Department}</span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400">{tech.UserID}</span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 font-bold text-xs">
+              <button
+                type="button"
+                onClick={() => setEditingTaskAssignedTechs(null)}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onUpdateTaskAssignedTechs) {
+                    onUpdateTaskAssignedTechs(editingTaskAssignedTechs.TaskID, tempAssignedTechEmails);
+                  }
+                  setEditingTaskAssignedTechs(null);
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer shadow-xs"
+              >
+                บันทึกรายชื่อช่าง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT TASK SCHEDULE MODAL */}
+      {editingTaskSchedule && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl animate-scaleUp">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">แก้ไขวันกำหนดให้ช่างทำงาน</h3>
+                  <p className="text-[11px] text-slate-500">
+                    กำหนดวันที่ควรเริ่มและวันที่ต้องทำเสร็จของขั้นตอนย่อย
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingTaskSchedule(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1">
+              <div className="font-bold text-slate-900">{editingTaskSchedule.TaskName}</div>
+              <div className="text-[11px] text-slate-600">
+                รหัสขั้นตอน: <span className="font-mono font-bold text-blue-600">{editingTaskSchedule.TaskID}</span>
+                {selectedJobForDetail && (
+                  <span> · ทะเบียน: <strong className="text-slate-900">{selectedJobForDetail.LicensePlate}</strong></span>
+                )}
+              </div>
+            </div>
+
+            {scheduleModalError && (
+              <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs font-semibold text-rose-700 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{scheduleModalError}</span>
+              </div>
+            )}
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  วันกำหนดให้ช่างเริ่มทำงาน (Target Start Date):
+                </label>
+                <input
+                  type="date"
+                  value={editTaskStartDate}
+                  onChange={(e) => setEditTaskStartDate(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  วันกำหนดให้ช่างทำเสร็จ (Target Due Date):
+                </label>
+                <input
+                  type="date"
+                  value={editTaskDueDate}
+                  onChange={(e) => setEditTaskDueDate(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:border-blue-600"
+                />
+              </div>
+
+              {/* Quick Date Presets */}
+              <div className="pt-1">
+                <span className="text-[10px] text-slate-500 font-semibold block mb-1.5">ตัวช่วยเลือกวันด่วน:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const today = new Date().toISOString().split('T')[0];
+                      setEditTaskStartDate(today);
+                    }}
+                    className="text-[10px] px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-medium cursor-pointer"
+                  >
+                    เริ่มวันนี้
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const today = new Date().toISOString().split('T')[0];
+                      setEditTaskStartDate(today);
+                      setEditTaskDueDate(today);
+                    }}
+                    className="text-[10px] px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-medium cursor-pointer"
+                  >
+                    เสร็จภายในวันนี้
+                  </button>
+                  {selectedJobForDetail?.DueDate && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditTaskDueDate(selectedJobForDetail.DueDate);
+                      }}
+                      className="text-[10px] px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-md font-medium cursor-pointer"
+                    >
+                      เสร็จตามใบงาน ({formatThaiDate(selectedJobForDetail.DueDate)})
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setEditingTaskSchedule(null)}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!editTaskStartDate || !editTaskDueDate) {
+                    setScheduleModalError('กรุณาระบุทั้งวันกำหนดเริ่มและวันกำหนดเสร็จ');
+                    return;
+                  }
+                  if (editTaskDueDate < editTaskStartDate) {
+                    setScheduleModalError('วันกำหนดเสร็จต้องไม่มาก่อนวันกำหนดเริ่ม');
+                    return;
+                  }
+                  if (onUpdateTaskSchedule) {
+                    onUpdateTaskSchedule(editingTaskSchedule.TaskID, editTaskStartDate, editTaskDueDate);
+                  }
+                  setEditingTaskSchedule(null);
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer shadow-xs"
+              >
+                บันทึกกำหนดการ
               </button>
             </div>
           </div>
@@ -2012,6 +2412,67 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
               >
                 <Trash2 className="w-4 h-4" />
                 <span>ยืนยันล้างใบงานทั้งหมด</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM DELETE TASK MODAL */}
+      {taskToDelete && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl animate-scaleUp">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="p-2.5 bg-red-50 rounded-xl">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">ยืนยันการลบขั้นตอนงาน</h3>
+                <p className="text-xs text-slate-500 font-medium">การดำเนินการนี้จะลบขั้นตอนนี้ออกจากใบงาน</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-700 space-y-2">
+              <div className="font-bold text-slate-900 text-sm">
+                ขั้นตอน: <span className="text-blue-600">{taskToDelete.TaskName}</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-600 pt-1">
+                <span>รหัสขั้นตอน:</span>
+                <span className="font-mono font-bold text-slate-900">{taskToDelete.TaskID}</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-600">
+                <span>ช่างผู้รับผิดชอบ:</span>
+                <span className="font-medium text-slate-900">{taskToDelete.AssignedTechs || '-'}</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-600">
+                <span>เวลามาตรฐาน (SLA):</span>
+                <span className="font-mono font-bold text-slate-900">{taskToDelete.StandardMinutes} นาที</span>
+              </div>
+              <div className="text-red-600 font-medium pt-2 border-t border-slate-200">
+                ⚠️ การลบขั้นตอนนี้ จะนำขั้นตอนนี้ออกจากใบงาน และบันทึกข้อมูลทันที
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setTaskToDelete(null)}
+                className="px-4 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteJobTask) {
+                    onDeleteJobTask(taskToDelete.TaskID);
+                  }
+                  setTaskToDelete(null);
+                }}
+                className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>ยืนยันลบขั้นตอน</span>
               </button>
             </div>
           </div>

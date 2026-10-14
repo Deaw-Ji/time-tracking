@@ -6,6 +6,7 @@ import {
   SheetUser,
   ActiveTechSession,
   TimeLogAction,
+  HelpRequest,
 } from '../types/shopFloor';
 import {
   Play,
@@ -18,6 +19,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { formatClockFromSeconds } from './DashboardView';
+import { getTaskScheduleAdherence, formatThaiDate } from '../utils/scheduleHelper';
 
 interface TechnicianFloorViewProps {
   currentUser: SheetUser;
@@ -37,6 +39,8 @@ interface TechnicianFloorViewProps {
     note: string
   ) => void;
   onUpdateTaskChecklist: (taskId: string, checklistString: string) => void;
+  helpRequests?: HelpRequest[];
+  onRequestHelp?: (taskId: string, jobId: string, requesterEmail: string) => void;
 }
 
 export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
@@ -52,6 +56,8 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
   onChangeSelectedTechEmail,
   onRecordTimeAction,
   onUpdateTaskChecklist,
+  helpRequests = [],
+  onRequestHelp = () => {},
 }) => {
   const technicians = users.filter((u) => u.Role === 'Technician' && u.Status === 'Active');
 
@@ -339,7 +345,8 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                       <th className="py-2.5 px-3 whitespace-nowrap">ยี่ห้อ · รุ่น · สี (Vehicle)</th>
                       <th className="py-2.5 px-3 whitespace-nowrap">ทะเบียน</th>
                       <th className="py-2.5 px-3 whitespace-nowrap">เลขตัวถัง (VIN)</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap text-center">กำหนดเสร็จ</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap text-center">กำหนดเริ่ม - เสร็จ</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap text-center">ติดตามเริ่มงานจริง</th>
                       <th className="py-2.5 px-2 text-right"></th>
                     </tr>
                   </thead>
@@ -351,6 +358,7 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                           s.TaskID === task.TaskID &&
                           s.TechEmail.toLowerCase() === activeTechEmail.toLowerCase()
                       );
+                      const adherence = getTaskScheduleAdherence(task, timeLogs);
 
                       return (
                         <tr
@@ -388,10 +396,30 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                           <td className="py-3.5 px-3 whitespace-nowrap font-mono text-[11px] text-slate-600">
                             {job?.VIN || '-'}
                           </td>
-                          <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono text-amber-700 font-semibold">
-                            <span className="bg-amber-50 px-2 py-0.5 rounded text-[11px]">
-                              {task.DueDate || '-'}
-                            </span>
+                          <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono">
+                            <div className="flex items-center justify-center gap-1 text-[11px]">
+                              <span className="font-semibold text-slate-800" title={`กำหนดเริ่ม: ${task.StartDate || '-'}`}>
+                                {formatThaiDate(task.StartDate)}
+                              </span>
+                              <span className="text-slate-400">➔</span>
+                              <span className="font-semibold text-amber-800" title={`กำหนดเสร็จ: ${task.DueDate || '-'}`}>
+                                {formatThaiDate(task.DueDate)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-3 text-center whitespace-nowrap">
+                            <div className="space-y-1">
+                              <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-medium ${adherence.startAdherence.badgeClass}`}>
+                                {adherence.startAdherence.label}
+                              </span>
+                              {adherence.dueAdherence.status === 'in-progress-overdue' && (
+                                <div>
+                                  <span className={`inline-block text-[9px] px-1.5 py-0.2 rounded font-bold ${adherence.dueAdherence.badgeClass}`}>
+                                    {adherence.dueAdherence.label}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="py-3.5 px-2 text-right whitespace-nowrap">
                             <ChevronRight className="w-4 h-4 text-emerald-600 inline font-bold" />
@@ -440,6 +468,7 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {pendingTasks.map((task) => {
                       const job = jobs.find((j) => j.JobID === task.JobID);
+                      const adherence = getTaskScheduleAdherence(task, timeLogs);
 
                       return (
                         <tr
@@ -470,13 +499,20 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                             {job?.VIN || '-'}
                           </td>
                           <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono text-slate-700">
-                            <span className="bg-slate-100 px-2 py-0.5 rounded text-[11px] font-semibold">
-                              {task.StartDate || '-'}
-                            </span>
+                            <div className="space-y-1">
+                              <span className="bg-slate-100 px-2 py-0.5 rounded text-[11px] font-semibold">
+                                {formatThaiDate(task.StartDate)}
+                              </span>
+                              <div>
+                                <span className={`inline-block text-[9px] px-1.5 py-0.2 rounded font-medium ${adherence.startAdherence.badgeClass}`}>
+                                  {adherence.startAdherence.label}
+                                </span>
+                              </div>
+                            </div>
                           </td>
                           <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono text-amber-700 font-semibold">
                             <span className="bg-amber-50 px-2 py-0.5 rounded text-[11px]">
-                              {task.DueDate || '-'}
+                              {formatThaiDate(task.DueDate)}
                             </span>
                           </td>
                           <td className="py-3.5 px-2 text-right whitespace-nowrap">
@@ -609,6 +645,94 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
               </div>
             )}
           </div>
+
+          {/* Department Tasks / Help Request Section */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
+            <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+              <span>👥</span>
+              งานอื่นๆ ภายในแผนก {activeTechObj.Department} (ขอเข้าช่วยงานเพื่อนร่วมแผนก)
+            </h4>
+            <p className="text-[11px] text-slate-500">
+              เมื่อคุณทำงานส่วนตัวเสร็จแล้ว สามารถกดขอเข้าช่วยงานเพื่อนร่วมแผนกในคันอื่นๆ ได้ เมื่อ Controller อนุมัติ คุณจะสามารถเข้าทำงานร่วมกันได้ทันที
+            </p>
+
+            {jobTasks
+              .filter((t) => {
+                if (t.Status === 'Completed') return false;
+                const assigned = t.AssignedTechs.toLowerCase();
+                if (assigned.includes(activeTechEmail.toLowerCase())) return false;
+                const assignedUsers = users.filter((u) => assigned.includes(u.Email.toLowerCase()));
+                return assignedUsers.some(
+                  (u) => u.Department.trim().toLowerCase() === activeTechObj.Department.trim().toLowerCase()
+                );
+              })
+              .length === 0 ? (
+              <div className="text-xs text-slate-400 py-3 text-center">ไม่มีงานอื่นในแผนกขณะนี้</div>
+            ) : (
+              <div className="space-y-2">
+                {jobTasks
+                  .filter((t) => {
+                    if (t.Status === 'Completed') return false;
+                    const assigned = t.AssignedTechs.toLowerCase();
+                    if (assigned.includes(activeTechEmail.toLowerCase())) return false;
+                    const assignedUsers = users.filter((u) => assigned.includes(u.Email.toLowerCase()));
+                    return assignedUsers.some(
+                      (u) => u.Department.trim().toLowerCase() === activeTechObj.Department.trim().toLowerCase()
+                    );
+                  })
+                  .map((task) => {
+                    const job = jobs.find((j) => j.JobID === task.JobID);
+                    const pendingReq = (helpRequests || []).find(
+                      (r) =>
+                        r.TaskID === task.TaskID &&
+                        r.RequesterEmail.toLowerCase() === activeTechEmail.toLowerCase() &&
+                        r.Status === 'Pending'
+                    );
+                    const approvedReq = (helpRequests || []).find(
+                      (r) =>
+                        r.TaskID === task.TaskID &&
+                        r.RequesterEmail.toLowerCase() === activeTechEmail.toLowerCase() &&
+                        r.Status === 'Approved'
+                    );
+
+                    return (
+                      <div key={task.TaskID} className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                        <div>
+                          <div className="font-bold text-slate-900 flex items-center gap-2">
+                            <span>{job?.JobID || task.JobID} · {task.TaskName}</span>
+                            <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-semibold">
+                              {job?.LicensePlate || '-'} ({job?.CarBrand || ''} {job?.CarModel || ''})
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            ผู้รับผิดชอบหลัก: {task.AssignedTechs}
+                          </div>
+                        </div>
+                        <div>
+                          {approvedReq ? (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-lg text-xs">
+                              ✓ ได้รับอนุมัติให้ช่วยงานแล้ว (คลิกเลือกที่คิวงานเพื่อเริ่ม)
+                            </span>
+                          ) : pendingReq ? (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-800 font-bold rounded-lg text-xs">
+                              ⏳ ส่งคำขอแล้ว (รอ Controller อนุมัติ)
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => onRequestHelp?.(task.TaskID, task.JobID, activeTechEmail)}
+                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors cursor-pointer text-xs shadow-2xs"
+                            >
+                              🤝 ขอเข้าช่วยงานนี้
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         /* VIEW MODE 2: TASK FOCUS WORKSTATION (หน้าจอทำงานเฉพาะคันที่เลือก) */
@@ -700,13 +824,28 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                     <div className="text-[11px] text-slate-500">
                       รายละเอียดอาการ: {parentJob.JobDetails}
                     </div>
-                    <div className="flex items-center gap-3 text-[10px] text-slate-400 font-mono pt-1 border-t border-slate-100">
-                      <span>เริ่ม: {task.StartDate || '-'}</span>
-                      <span>·</span>
-                      <span>กำหนดเสร็จของแผนก (SLA): {task.DueDate || '-'}</span>
-                      <span>·</span>
-                      <span className="text-blue-600 font-semibold">ส่งมอบลูกค้า (SA): {parentJob.DeliveryDate || parentJob.DueDate || '-'}</span>
-                    </div>
+                    {(() => {
+                      const adherence = getTaskScheduleAdherence(task, timeLogs);
+                      return (
+                        <>
+                          <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 font-mono pt-1.5 border-t border-slate-100">
+                            <span>กำหนดเริ่ม: <strong className="text-slate-800">{formatThaiDate(task.StartDate)}</strong></span>
+                            <span>·</span>
+                            <span>กำหนดเสร็จ (SLA): <strong className="text-amber-800">{formatThaiDate(task.DueDate)}</strong></span>
+                            <span>·</span>
+                            <span className="text-blue-600 font-semibold">ส่งมอบลูกค้า (SA): {formatThaiDate(parentJob.DeliveryDate || parentJob.DueDate)}</span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${adherence.startAdherence.badgeClass}`}>
+                              {adherence.startAdherence.label}
+                            </span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${adherence.dueAdherence.badgeClass}`}>
+                              {adherence.dueAdherence.label}
+                            </span>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 

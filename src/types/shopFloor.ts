@@ -71,6 +71,16 @@ export interface TechLeave {
   Notes?: string;
 }
 
+export interface HelpRequest {
+  RequestID: string;
+  TaskID: string;
+  JobID: string;
+  RequesterEmail: string;
+  OwnerEmail?: string;
+  Status: 'Pending' | 'Approved' | 'Rejected';
+  Timestamp: string;
+}
+
 export interface SheetSetting {
   ConfigKey: string;
   ConfigValue: string;

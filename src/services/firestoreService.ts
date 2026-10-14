@@ -19,6 +19,7 @@ import {
   MasterDepartment,
   MasterCarBrand,
   TechLeave,
+  HelpRequest,
 } from '../types/shopFloor';
 import {
   INITIAL_USERS,
@@ -154,6 +155,7 @@ export interface WorkshopFirestoreSubscribers {
   onLeavesChange: (leaves: TechLeave[]) => void;
   onDepartmentsChange: (departments: MasterDepartment[]) => void;
   onCarBrandsChange?: (brands: MasterCarBrand[]) => void;
+  onHelpRequestsChange?: (requests: HelpRequest[]) => void;
   onConnectionStatus?: (isConnected: boolean) => void;
 }
 
@@ -325,6 +327,19 @@ export function subscribeToWorkshopData(callbacks: WorkshopFirestoreSubscribers)
         }
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'carBrands')
+    )
+  );
+
+  // 12. Help Requests
+  unsubscribers.push(
+    onSnapshot(
+      collection(db, 'helpRequests'),
+      (snap) => {
+        const list: HelpRequest[] = [];
+        snap.forEach((d) => list.push(d.data() as HelpRequest));
+        callbacks.onHelpRequestsChange?.(list);
+      },
+      (err) => handleFirestoreError(err, OperationType.GET, 'helpRequests')
     )
   );
 
@@ -534,6 +549,24 @@ export async function deleteMasterSopStageFromFirestore(stageId: string) {
     await deleteDoc(doc(db, 'masterSopStages', stageId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `masterSopStages/${stageId}`);
+    throw error;
+  }
+}
+
+export async function saveHelpRequestToFirestore(req: HelpRequest) {
+  try {
+    await setDoc(doc(db, 'helpRequests', req.RequestID), req);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `helpRequests/${req.RequestID}`);
+    throw error;
+  }
+}
+
+export async function deleteHelpRequestFromFirestore(requestId: string) {
+  try {
+    await deleteDoc(doc(db, 'helpRequests', requestId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `helpRequests/${requestId}`);
     throw error;
   }
 }

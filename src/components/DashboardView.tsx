@@ -10,6 +10,7 @@ import {
   MasterDepartment,
 } from "../types/shopFloor";
 import { Play, Pause, CheckCircle2, ArrowUpRight, Clock, Users } from "lucide-react";
+import { getTaskScheduleAdherence, formatThaiDate } from "../utils/scheduleHelper";
 
 interface DashboardViewProps {
   jobs: SheetJob[];
@@ -367,6 +368,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
                 <th className="py-3 px-4">ทะเบียนรถ · รหัสงาน</th>
                 <th className="py-3 px-4">ขั้นตอนทำสีย่อย (SOP Step)</th>
+                <th className="py-3 px-4">กำหนดการ & ติดตามเริ่มงาน</th>
                 <th className="py-3 px-4">ชิ้นส่วนตัวถังที่ทำสี (Parts Checklist)</th>
                 <th className="py-3 px-4">ช่างผู้รับผิดชอบ</th>
                 <th className="py-3 px-4">สถานะ</th>
@@ -377,6 +379,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {validTasks.slice(0, 50).map((task) => {
                 const j = jobs.find((item) => item.JobID === task.JobID);
                 const taskLogs = timeLogs.filter((l) => l.TaskID === task.TaskID);
+                const adherence = getTaskScheduleAdherence(task, timeLogs);
                 let totalSec = 0;
                 let activeStart: string | null = null;
                 taskLogs.forEach((log) => {
@@ -430,6 +433,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <td className="py-3 px-4 align-top">
                       <div className="font-semibold text-slate-900">{task.TaskName}</div>
                       <div className="text-[11px] text-slate-500 font-mono">{task.TaskID}</div>
+                    </td>
+                    <td className="py-3 px-4 align-top">
+                      <div className="space-y-1">
+                        <div className="text-slate-800 font-mono text-[11px] flex items-center gap-1">
+                          <span className="font-semibold">{formatThaiDate(task.StartDate)}</span>
+                          <span className="text-slate-400">➔</span>
+                          <span className="font-semibold text-amber-800">{formatThaiDate(task.DueDate)}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded font-medium ${adherence.startAdherence.badgeClass}`}>
+                            {adherence.startAdherence.label}
+                          </span>
+                          {task.Status === 'Completed' ? (
+                            <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded font-medium ${adherence.dueAdherence.badgeClass}`}>
+                              {adherence.dueAdherence.label}
+                            </span>
+                          ) : adherence.dueAdherence.status === 'in-progress-overdue' ? (
+                            <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded font-bold ${adherence.dueAdherence.badgeClass}`}>
+                              {adherence.dueAdherence.label}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
                     </td>
                     <td className="py-3 px-4 align-top">
                       {checklistItems.length > 0 ? (
