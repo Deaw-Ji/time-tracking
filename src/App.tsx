@@ -135,13 +135,12 @@ export default function App() {
     if (saved) {
       try {
         const parsed: SheetUser[] = JSON.parse(saved);
-        return parsed.map((u) => {
-          const init = INITIAL_USERS.find((iu) => iu.Email.toLowerCase() === u.Email.toLowerCase());
-          return {
-            ...u,
-            Nickname: u.Nickname || init?.Nickname || '',
-          };
-        });
+        const cleaned = parsed.filter(
+          (u) =>
+            !['EMP-001', 'EMP-002', 'EMP-003', 'EMP-004', 'EMP-005', 'EMP-006'].includes(u.UserID) &&
+            !u.Email.includes('@premium-auto.co.th')
+        );
+        if (cleaned.length > 0) return cleaned;
       } catch {
         return INITIAL_USERS;
       }
@@ -198,7 +197,17 @@ export default function App() {
 
   const [techLeaves, setTechLeaves] = useState<TechLeave[]>(() => {
     const saved = localStorage.getItem('autofloor_techleaves');
-    return saved ? JSON.parse(saved) : INITIAL_TECH_LEAVES;
+    if (saved) {
+      try {
+        const parsed: TechLeave[] = JSON.parse(saved);
+        return parsed.filter(
+          (l) => l.LeaveID !== 'LV-001' && l.LeaveID !== 'LV-002' && !l.TechEmail.includes('@premium-auto.co.th')
+        );
+      } catch {
+        return [];
+      }
+    }
+    return [];
   });
 
   const [helpRequests, setHelpRequests] = useState<HelpRequest[]>(() => {
@@ -315,15 +324,7 @@ export default function App() {
         setWorkCalendar(newCalendar);
       },
       onSettingsChange: (newSettings) => {
-        const existingKeys = new Set(newSettings.map((s) => s.ConfigKey));
-        const missing = INITIAL_SETTINGS.filter((s) => !existingKeys.has(s.ConfigKey));
-        if (missing.length > 0) {
-          const merged = [...newSettings, ...missing];
-          setSettings(merged);
-          saveSettingsToFirestore(missing).catch((e) => console.error("Auto-seed missing settings error:", e));
-        } else {
-          setSettings(newSettings);
-        }
+        setSettings(newSettings);
       },
       onCarPartsChange: (newParts) => {
         setCarParts(newParts);
@@ -332,7 +333,10 @@ export default function App() {
         setMasterSopStages(newStages);
       },
       onLeavesChange: (newLeaves) => {
-        setTechLeaves(newLeaves);
+        const cleaned = newLeaves.filter(
+          (l) => l.LeaveID !== 'LV-001' && l.LeaveID !== 'LV-002' && !l.TechEmail.includes('@premium-auto.co.th')
+        );
+        setTechLeaves(cleaned);
       },
       onDepartmentsChange: (newDepartments) => {
         setDepartments(newDepartments);
@@ -422,13 +426,18 @@ export default function App() {
   }, [settings]);
 
   const efficiencySummary = useMemo(() => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const startOfMonth = `${y}-${m}-01`;
+    const todayStr = today.toISOString().slice(0, 10);
     return calculateDualEfficiency(
       users,
       jobTasks,
       timeLogs,
       workCalendar,
-      '2026-09-30',
-      '2026-10-06',
+      startOfMonth,
+      todayStr,
       techLeaves
     );
   }, [users, jobTasks, timeLogs, workCalendar, techLeaves]);
@@ -923,12 +932,7 @@ export default function App() {
     setCurrentUser(null);
     setShowResetDbModal(false);
 
-    // Save initial standard seed to Firestore
-    INITIAL_USERS.forEach((u) => saveUserToFirestore(u).catch((e) => console.error(e)));
-    INITIAL_WORK_CALENDAR.forEach((c) => saveWorkCalendarToFirestore([c]).catch((e) => console.error(e)));
-    INITIAL_SETTINGS.forEach((s) => saveSettingsToFirestore([s]).catch((e) => console.error(e)));
-
-    showToast('คืนค่าฐานข้อมูลสู่มาตรฐานโรงงานเสร็จสมบูรณ์');
+    showToast('ล้างแคชเครื่องและรีโหลดข้อมูลจากคลาวด์เรียบร้อย');
   };
 
   // Automated Night Cutoff to Auto-Pause any active sessions running past the cutoff time (e.g. 23:00)

@@ -95,10 +95,18 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
 
   // Filter tasks assigned to this technician
   const myAssignedTasks = jobTasks.filter((t) => {
+    if (!t.AssignedTechs) return false;
     const emailList = t.AssignedTechs.toLowerCase()
       .split(',')
       .map((s) => s.trim());
-    return emailList.includes(activeTechEmail.toLowerCase());
+    const candidates = [
+      activeTechEmail.toLowerCase(),
+      activeTechObj?.Email?.toLowerCase(),
+      activeTechObj?.UserID?.toLowerCase(),
+      activeTechObj?.Name?.toLowerCase(),
+      activeTechObj?.Nickname?.toLowerCase(),
+    ].filter(Boolean);
+    return emailList.some((tech) => candidates.includes(tech));
   });
 
   // 1. In Progress Tasks: กำลังทำงานอยู่หรือกำลังจับเวลา (Active / In Progress)

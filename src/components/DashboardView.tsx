@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   SheetJob,
   SheetJobTask,
@@ -51,6 +51,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigateTab,
   currentUserRole,
 }) => {
+  const [viewingTaskTimeLogs, setViewingTaskTimeLogs] = useState<SheetJobTask | null>(null);
+
   const validTasks = jobTasks.filter(
     (t) =>
       t &&
@@ -507,7 +509,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </span>
                     </td>
                     <td className="py-3 px-4 align-top text-right font-mono font-bold tabular-nums text-slate-900">
-                      {formatClockFromSeconds(totalSec)}
+                      <button
+                        onClick={() => setViewingTaskTimeLogs(task)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 text-blue-700 hover:text-blue-800 transition-colors cursor-pointer text-xs font-mono shadow-xs"
+                        title="คลิกดูประวัติ TimeLogs รายละเอียด"
+                      >
+                        <Clock className="w-3.5 h-3.5 text-blue-500" />
+                        <span>{formatClockFromSeconds(totalSec)}</span>
+                      </button>
                     </td>
                   </tr>
                 );
@@ -523,6 +532,109 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* VIEW TASK TIMELOGS HISTORY MODAL */}
+      {viewingTaskTimeLogs && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden border border-slate-200">
+            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-blue-400" />
+                  ประวัติการบันทึกเวลา (TimeLogs History)
+                </h3>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  ขั้นตอน: {viewingTaskTimeLogs.TaskName} (รหัส: {viewingTaskTimeLogs.TaskID})
+                </p>
+              </div>
+              <button
+                onClick={() => setViewingTaskTimeLogs(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-4 flex-1">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 flex items-center gap-2">
+                <span>ℹ️</span>
+                <span>ข้อมูล TimeLogs บันทึกประวัติการทำงานจริงโดยอัตโนมัติจากช่างหน้างาน (โหมดตรวจสอบ: Read-Only)</span>
+              </div>
+
+              {(() => {
+                const logs = timeLogs
+                  .filter((l) => l.TaskID === viewingTaskTimeLogs.TaskID)
+                  .sort((a, b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
+
+                if (logs.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-slate-400 text-sm italic">
+                      ยังไม่มีประวัติการบันทึกเวลา (TimeLogs) สำหรับขั้นตอนนี้
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="bg-slate-50 px-4 py-2.5 grid grid-cols-12 text-xs font-bold text-slate-600">
+                      <div className="col-span-2">การกระทำ</div>
+                      <div className="col-span-3">เวลา (Timestamp)</div>
+                      <div className="col-span-3">ช่าง (Tech)</div>
+                      <div className="col-span-2 text-right">ช่วงเวลานี้</div>
+                      <div className="col-span-2 text-right">หมายเหตุ</div>
+                    </div>
+                    {logs.map((log) => {
+                      const techObj = users.find((u) => u.Email.toLowerCase() === log.TechEmail.toLowerCase());
+                      const techDisplayName = techObj ? (techObj.Nickname || techObj.Name) : log.TechEmail.split('@')[0];
+                      const dt = new Date(log.Timestamp);
+                      const timeStr = !isNaN(dt.getTime())
+                        ? `${dt.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })} ${dt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+                        : log.Timestamp;
+
+                      return (
+                        <div key={log.LogID} className="px-4 py-3 grid grid-cols-12 text-xs items-center hover:bg-slate-50/70">
+                          <div className="col-span-2">
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                              log.Action === 'START'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : log.Action === 'PAUSE'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {log.Action}
+                            </span>
+                          </div>
+                          <div className="col-span-3 font-mono text-slate-700 text-[11px]">
+                            {timeStr}
+                          </div>
+                          <div className="col-span-3 font-medium text-slate-800 truncate" title={log.TechEmail}>
+                            {techDisplayName}
+                          </div>
+                          <div className="col-span-2 text-right font-mono font-semibold text-slate-900">
+                            {log.DurationMinutes ? `${log.DurationMinutes} นาที` : '-'}
+                          </div>
+                          <div className="col-span-2 text-right text-slate-500 text-[11px] truncate" title={log.Note || ''}>
+                            {log.Note || '-'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+              <button
+                onClick={() => setViewingTaskTimeLogs(null)}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                ปิดหน้าต่าง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

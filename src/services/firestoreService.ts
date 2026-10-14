@@ -83,63 +83,10 @@ export function handleFirestoreError(
   return errInfo;
 }
 
-// Seed initial workshop data if collections are empty
+// Safe initial connection verification (never overwrites user data)
 export async function seedInitialDataIfEmpty() {
-  try {
-    const usersSnap = await getDocs(collection(db, 'users'));
-    if (usersSnap.empty) {
-      console.log('Seeding initial workshop database to Firestore...');
-      const batch = writeBatch(db);
-
-      INITIAL_USERS.forEach((user) => {
-        batch.set(doc(db, 'users', user.UserID), user);
-      });
-
-      INITIAL_JOBS.forEach((job) => {
-        batch.set(doc(db, 'jobs', job.JobID), job);
-      });
-
-      INITIAL_JOB_TASKS.forEach((task) => {
-        batch.set(doc(db, 'jobTasks', task.TaskID), task);
-      });
-
-      INITIAL_WORK_CALENDAR.forEach((cal) => {
-        batch.set(doc(db, 'workCalendar', cal.Date), cal);
-      });
-
-      INITIAL_SETTINGS.forEach((st) => {
-        batch.set(doc(db, 'settings', st.ConfigKey), st);
-      });
-
-      CAR_PARTS_LIST.forEach((part, idx) => {
-        batch.set(doc(db, 'carParts', `PART-${String(idx + 1).padStart(2, '0')}`), {
-          id: `PART-${String(idx + 1).padStart(2, '0')}`,
-          name: part,
-        });
-      });
-
-      INITIAL_MASTER_SOP_STAGES.forEach((stage) => {
-        batch.set(doc(db, 'masterSopStages', stage.id), stage);
-      });
-
-      INITIAL_TECH_LEAVES.forEach((leave) => {
-        batch.set(doc(db, 'techLeaves', leave.LeaveID), leave);
-      });
-
-      INITIAL_DEPARTMENTS.forEach((dept) => {
-        batch.set(doc(db, 'departments', dept.id), dept);
-      });
-
-      INITIAL_CAR_BRANDS.forEach((brand) => {
-        batch.set(doc(db, 'carBrands', brand.id), brand);
-      });
-
-      await batch.commit();
-      console.log('Initial workshop database seeded successfully!');
-    }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'bootstrap_seeding');
-  }
+  // Respect existing user database: do not inject any mock or test data
+  console.log('Firestore connection active - preserving user database.');
 }
 
 // Firestore Real-Time Subscribe Callbacks
@@ -168,11 +115,9 @@ export function subscribeToWorkshopData(callbacks: WorkshopFirestoreSubscribers)
       collection(db, 'users'),
       (snap) => {
         callbacks.onConnectionStatus?.(true);
-        if (!snap.empty) {
-          const list: SheetUser[] = [];
-          snap.forEach((d) => list.push(d.data() as SheetUser));
-          callbacks.onUsersChange(list);
-        }
+        const list: SheetUser[] = [];
+        snap.forEach((d) => list.push(d.data() as SheetUser));
+        callbacks.onUsersChange(list);
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'users')
     )
@@ -183,11 +128,9 @@ export function subscribeToWorkshopData(callbacks: WorkshopFirestoreSubscribers)
     onSnapshot(
       collection(db, 'jobs'),
       (snap) => {
-        if (!snap.empty) {
-          const list: SheetJob[] = [];
-          snap.forEach((d) => list.push(d.data() as SheetJob));
-          callbacks.onJobsChange(list);
-        }
+        const list: SheetJob[] = [];
+        snap.forEach((d) => list.push(d.data() as SheetJob));
+        callbacks.onJobsChange(list);
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'jobs')
     )
@@ -198,11 +141,9 @@ export function subscribeToWorkshopData(callbacks: WorkshopFirestoreSubscribers)
     onSnapshot(
       collection(db, 'jobTasks'),
       (snap) => {
-        if (!snap.empty) {
-          const list: SheetJobTask[] = [];
-          snap.forEach((d) => list.push(d.data() as SheetJobTask));
-          callbacks.onTasksChange(list);
-        }
+        const list: SheetJobTask[] = [];
+        snap.forEach((d) => list.push(d.data() as SheetJobTask));
+        callbacks.onTasksChange(list);
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'jobTasks')
     )
@@ -226,11 +167,9 @@ export function subscribeToWorkshopData(callbacks: WorkshopFirestoreSubscribers)
     onSnapshot(
       collection(db, 'workCalendar'),
       (snap) => {
-        if (!snap.empty) {
-          const list: SheetWorkCalendar[] = [];
-          snap.forEach((d) => list.push(d.data() as SheetWorkCalendar));
-          callbacks.onCalendarChange(list);
-        }
+        const list: SheetWorkCalendar[] = [];
+        snap.forEach((d) => list.push(d.data() as SheetWorkCalendar));
+        callbacks.onCalendarChange(list);
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'workCalendar')
     )
@@ -241,11 +180,9 @@ export function subscribeToWorkshopData(callbacks: WorkshopFirestoreSubscribers)
     onSnapshot(
       collection(db, 'settings'),
       (snap) => {
-        if (!snap.empty) {
-          const list: SheetSetting[] = [];
-          snap.forEach((d) => list.push(d.data() as SheetSetting));
-          callbacks.onSettingsChange(list);
-        }
+        const list: SheetSetting[] = [];
+        snap.forEach((d) => list.push(d.data() as SheetSetting));
+        callbacks.onSettingsChange(list);
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'settings')
     )
@@ -256,14 +193,12 @@ export function subscribeToWorkshopData(callbacks: WorkshopFirestoreSubscribers)
     onSnapshot(
       collection(db, 'carParts'),
       (snap) => {
-        if (!snap.empty) {
-          const parts: string[] = [];
-          snap.forEach((d) => {
-            const data = d.data();
-            if (data.name) parts.push(data.name);
-          });
-          if (parts.length > 0) callbacks.onCarPartsChange(parts);
-        }
+        const parts: string[] = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          if (data.name) parts.push(data.name);
+        });
+        if (parts.length > 0) callbacks.onCarPartsChange(parts);
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'carParts')
     )
@@ -274,12 +209,10 @@ export function subscribeToWorkshopData(callbacks: WorkshopFirestoreSubscribers)
     onSnapshot(
       collection(db, 'masterSopStages'),
       (snap) => {
-        if (!snap.empty) {
-          const list: MasterSopStage[] = [];
-          snap.forEach((d) => list.push(d.data() as MasterSopStage));
-          list.sort((a, b) => a.stepNumber - b.stepNumber);
-          callbacks.onStagesChange(list);
-        }
+        const list: MasterSopStage[] = [];
+        snap.forEach((d) => list.push(d.data() as MasterSopStage));
+        list.sort((a, b) => a.stepNumber - b.stepNumber);
+        callbacks.onStagesChange(list);
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'masterSopStages')
     )
@@ -303,12 +236,10 @@ export function subscribeToWorkshopData(callbacks: WorkshopFirestoreSubscribers)
     onSnapshot(
       collection(db, 'departments'),
       (snap) => {
-        if (!snap.empty) {
-          const list: MasterDepartment[] = [];
-          snap.forEach((d) => list.push(d.data() as MasterDepartment));
-          list.sort((a, b) => a.id.localeCompare(b.id));
-          callbacks.onDepartmentsChange(list);
-        }
+        const list: MasterDepartment[] = [];
+        snap.forEach((d) => list.push(d.data() as MasterDepartment));
+        list.sort((a, b) => a.id.localeCompare(b.id));
+        callbacks.onDepartmentsChange(list);
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'departments')
     )
@@ -319,12 +250,10 @@ export function subscribeToWorkshopData(callbacks: WorkshopFirestoreSubscribers)
     onSnapshot(
       collection(db, 'carBrands'),
       (snap) => {
-        if (!snap.empty) {
-          const list: MasterCarBrand[] = [];
-          snap.forEach((d) => list.push(d.data() as MasterCarBrand));
-          list.sort((a, b) => a.name.localeCompare(b.name));
-          callbacks.onCarBrandsChange?.(list);
-        }
+        const list: MasterCarBrand[] = [];
+        snap.forEach((d) => list.push(d.data() as MasterCarBrand));
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        callbacks.onCarBrandsChange?.(list);
       },
       (err) => handleFirestoreError(err, OperationType.GET, 'carBrands')
     )
