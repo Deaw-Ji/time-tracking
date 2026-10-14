@@ -21,6 +21,7 @@ import {
   Search,
   QrCode,
 } from 'lucide-react';
+import { Html5Qrcode } from 'html5-qrcode';
 import { formatClockFromSeconds } from './DashboardView';
 import { getTaskScheduleAdherence, formatThaiDate } from '../utils/scheduleHelper';
 
@@ -1122,83 +1123,139 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
       )}
 
       {/* CAMERA BARCODE SCANNER MODAL */}
-      {isScannerModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 flex flex-col">
-            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
-              <h3 className="text-base font-bold flex items-center gap-2">
-                <ScanLine className="w-5 h-5 text-blue-400" />
-                สแกนบาร์โค้ดใบงาน (Barcode Scanner)
-              </h3>
-              <button
-                onClick={() => setIsScannerModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div className="relative h-48 bg-slate-950 rounded-xl overflow-hidden flex flex-col items-center justify-center border-2 border-dashed border-blue-500/50">
-                <div className="absolute inset-0 flex items-center justify-center opacity-30">
-                  <QrCode className="w-24 h-24 text-blue-400" />
-                </div>
-                <div className="absolute inset-x-0 h-0.5 bg-red-500 shadow-lg shadow-red-500 animate-bounce" />
-                <div className="relative z-10 text-center px-4">
-                  <p className="text-xs font-bold text-white mb-1">กล้องพร้อมสแกนบาร์โค้ดใบสั่งซ่อม</p>
-                  <p className="text-[10px] text-slate-400">เล็งกล้องมือถือไปที่บาร์โค้ดบนใบ JOB หรือเลือกจากรายการด้านล่าง</p>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">
-                  งานที่ได้รับมอบหมายทั้งหมดของคุณ (แตะเพื่อจำลองการสแกน):
-                </label>
-                <div className="max-h-48 overflow-y-auto space-y-1.5 divide-y divide-slate-100 border border-slate-200 rounded-xl p-2 bg-slate-50">
-                  {baseMyAssignedTasks.length > 0 ? (
-                    baseMyAssignedTasks.map((t) => {
-                      const job = jobs.find((j) => j.JobID === t.JobID);
-                      return (
-                        <div
-                          key={t.TaskID}
-                          onClick={() => {
-                            setSearchQuery(t.JobID);
-                            setIsScannerModalOpen(false);
-                          }}
-                          className="pt-1.5 pb-1.5 px-2 rounded-lg hover:bg-blue-50 cursor-pointer flex items-center justify-between transition-colors"
-                        >
-                          <div>
-                            <div className="font-bold text-xs text-slate-900 font-mono">
-                              JOB: {t.JobID} {job?.LicensePlate ? `(${job.LicensePlate})` : ''}
-                            </div>
-                            <div className="text-[11px] text-slate-500">{t.TaskName}</div>
-                          </div>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
-                            สแกนงานนี้
-                          </span>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="text-center py-6 text-xs text-slate-400 italic">
-                      ไม่มีงานที่ได้รับมอบหมาย
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
-              <button
-                onClick={() => setIsScannerModalOpen(false)}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-              >
-                ปิดหน้าต่าง
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <BarcodeScannerModal
+        isOpen={isScannerModalOpen}
+        onClose={() => setIsScannerModalOpen(false)}
+        onScanSuccess={(text) => {
+          setSearchQuery(text);
+          setIsScannerModalOpen(false);
+        }}
+        assignedTasks={baseMyAssignedTasks}
+        jobs={jobs}
+      />
     </div>
   );
 };
+
+function BarcodeScannerModal({
+  isOpen,
+  onClose,
+  onScanSuccess,
+  assignedTasks,
+  jobs,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onScanSuccess: (text: string) => void;
+  assignedTasks: SheetJobTask[];
+  jobs: SheetJob[];
+}) {
+  useEffect(() => {
+    let html5QrCode: Html5Qrcode | null = null;
+    if (isOpen) {
+      const timer = setTimeout(() => {
+        try {
+          html5QrCode = new Html5Qrcode('reader');
+          html5QrCode
+            .start(
+              { facingMode: 'environment' },
+              { fps: 10, qrbox: { width: 250, height: 150 } },
+              (decodedText) => {
+                onScanSuccess(decodedText);
+                if (html5QrCode && html5QrCode.isScanning) {
+                  html5QrCode.stop().catch(() => {});
+                }
+              },
+              () => {}
+            )
+            .catch((err) => {
+              console.warn('Camera access note:', err);
+            });
+        } catch (e) {
+          console.warn('Scanner init note:', e);
+        }
+      }, 400);
+      return () => {
+        clearTimeout(timer);
+        if (html5QrCode) {
+          try {
+            if (html5QrCode.isScanning) {
+              html5QrCode.stop().catch(() => {});
+            }
+          } catch {}
+        }
+      };
+    }
+  }, [isOpen, onScanSuccess]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 flex flex-col">
+        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+          <h3 className="text-base font-bold flex items-center gap-2">
+            <ScanLine className="w-5 h-5 text-blue-400" />
+            สแกนบาร์โค้ดใบงาน (Barcode Scanner)
+          </h3>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div className="relative h-56 bg-slate-950 rounded-xl overflow-hidden flex flex-col items-center justify-center border-2 border-dashed border-blue-500/50">
+            <div id="reader" className="absolute inset-0 w-full h-full"></div>
+            <div className="absolute inset-x-0 h-0.5 bg-red-500 shadow-lg shadow-red-500 animate-bounce pointer-events-none" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-2">
+              หรือเลือกงานจากรายการ (Quick Select):
+            </label>
+            <div className="max-h-48 overflow-y-auto space-y-1.5 divide-y divide-slate-100 border border-slate-200 rounded-xl p-2 bg-slate-50">
+              {assignedTasks.length > 0 ? (
+                assignedTasks.map((t) => {
+                  const job = jobs.find((j) => j.JobID === t.JobID);
+                  return (
+                    <div
+                      key={t.TaskID}
+                      onClick={() => onScanSuccess(t.JobID)}
+                      className="pt-1.5 pb-1.5 px-2 rounded-lg hover:bg-blue-50 cursor-pointer flex items-center justify-between transition-colors"
+                    >
+                      <div>
+                        <div className="font-bold text-xs text-slate-900 font-mono">
+                          JOB: {t.JobID} {job?.LicensePlate ? `(${job.LicensePlate})` : ''}
+                        </div>
+                        <div className="text-[11px] text-slate-500">{t.TaskName}</div>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                        เลือกงานนี้
+                      </span>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-6 text-xs text-slate-400 italic">
+                  ไม่มีงานที่ได้รับมอบหมาย
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+          >
+            ปิดหน้าต่าง
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
