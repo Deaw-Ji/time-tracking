@@ -16,14 +16,23 @@ import {
   Info,
   ArrowLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Calendar,
   ScanLine,
   Search,
   QrCode,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { formatClockFromSeconds } from './DashboardView';
-import { getTaskScheduleAdherence, formatThaiDate } from '../utils/scheduleHelper';
+import {
+  getTaskScheduleAdherence,
+  formatThaiDate,
+  formatThaiDateTime,
+  formatThaiTime,
+} from '../utils/scheduleHelper';
 
 interface TechnicianFloorViewProps {
   currentUser: SheetUser;
@@ -88,6 +97,35 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
   const [pauseModalTaskId, setPauseModalTaskId] = useState<string | null>(null);
   const [selectedReason, setSelectedReason] = useState<string>(pauseReasons[0] || 'รออะไหล่/รอชิ้นงาน');
   const [customPauseNote, setCustomPauseNote] = useState('');
+
+  // Copy feedback state & session log history drawer
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [showTimeLogsHistory, setShowTimeLogsHistory] = useState(false);
+
+  const handleCopyText = (text: string, fieldId: string) => {
+    if (!text || text === '-' || text === 'ยังไม่ได้เริ่มงาน' || text === 'ยังไม่เสร็จสิ้น') return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setCopiedField(fieldId);
+      setTimeout(() => {
+        setCopiedField(null);
+      }, 2000);
+    } catch (e) {
+      console.error('Copy failed:', e);
+    }
+  };
 
   // Lock body scroll when pause modal or scanner modal is active
   useEffect(() => {
@@ -615,14 +653,16 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                       <th className="py-2.5 px-3 whitespace-nowrap">ยี่ห้อ · รุ่น · สี (Vehicle)</th>
                       <th className="py-2.5 px-3 whitespace-nowrap">ทะเบียน</th>
                       <th className="py-2.5 px-3 whitespace-nowrap">เลขตัวถัง (VIN)</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap text-center">กำหนดเริ่มงาน</th>
-                      <th className="py-2.5 px-3 whitespace-nowrap text-center">กำหนดเสร็จ</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap text-center">เวลาเริ่มจริง (START)</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap text-center">เวลาเสร็จจริง (FINISH)</th>
+                      <th className="py-2.5 px-3 whitespace-nowrap text-center">รวมเวลาซ่อม</th>
                       <th className="py-2.5 px-2 text-right"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {completedTasks.map((task) => {
                       const job = jobs.find((j) => j.JobID === task.JobID);
+                      const adherence = getTaskScheduleAdherence(task, timeLogs);
 
                       return (
                         <tr
@@ -652,11 +692,18 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                           <td className="py-3.5 px-3 whitespace-nowrap font-mono text-[11px] text-slate-500">
                             {job?.VIN || '-'}
                           </td>
-                          <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono text-slate-500 text-[11px]">
-                            {task.StartDate || '-'}
+                          <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono text-emerald-800 text-[11px]">
+                            <span className="bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded font-semibold inline-block">
+                              {adherence.actualStartFormatted}
+                            </span>
                           </td>
-                          <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono text-slate-500 text-[11px]">
-                            {task.DueDate || '-'}
+                          <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono text-blue-800 text-[11px]">
+                            <span className="bg-blue-50 border border-blue-200/80 px-2 py-0.5 rounded font-semibold inline-block">
+                              {adherence.actualCompleteFormatted}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono text-slate-800 font-bold text-[11px]">
+                            {formatClockFromSeconds(task.TotalMinutes * 60)}
                           </td>
                           <td className="py-3.5 px-2 text-right whitespace-nowrap">
                             <ChevronRight className="w-4 h-4 text-slate-400 inline" />
@@ -887,6 +934,10 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                     </div>
                     {(() => {
                       const adherence = getTaskScheduleAdherence(task, timeLogs);
+                      const taskLogs = timeLogs
+                        .filter((l) => l.TaskID === task.TaskID)
+                        .sort((a, b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
+
                       return (
                         <>
                           <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 font-mono pt-1.5 border-t border-slate-100">
@@ -903,6 +954,141 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${adherence.dueAdherence.badgeClass}`}>
                               {adherence.dueAdherence.label}
                             </span>
+                          </div>
+
+                          {/* ข้อมูลเวลาเริ่มจริงและเวลาเสร็จจริง สำหรับลงข้อมูลในระบบหลัก */}
+                          <div className="mt-3 pt-3 border-t border-slate-200">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5 text-blue-600" />
+                                <span>บันทึกเวลาจริง (สำหรับคีย์ลงระบบหลัก):</span>
+                              </span>
+                              {copiedField && (
+                                <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full animate-fadeIn">
+                                  ✓ คัดลอกแล้ว
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {/* กล่องเวลาเริ่มงานจริง */}
+                              <div className="bg-emerald-50/80 border border-emerald-300/80 rounded-xl p-2.5 flex items-start justify-between gap-2 shadow-2xs">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-900 uppercase">
+                                    <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                                    <span>เวลาเริ่มงานจริง (START)</span>
+                                  </div>
+                                  <div className="text-xs sm:text-sm font-bold text-slate-900 font-mono mt-1">
+                                    {adherence.actualStartFormatted}
+                                  </div>
+                                  {adherence.actualStartTime && (
+                                    <div className="text-[10px] text-emerald-800 font-mono mt-0.5 font-semibold">
+                                      เฉพาะเวลา: {adherence.actualStartTime}
+                                    </div>
+                                  )}
+                                </div>
+                                {adherence.hasStarted && adherence.actualStartFormatted !== 'ยังไม่ได้เริ่มงาน' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyText(adherence.actualStartFormatted, 'start-full')}
+                                    title="คัดลอกวันและเวลาเริ่ม"
+                                    className="px-2 py-1 text-[11px] font-bold text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100 rounded-lg transition-colors border border-emerald-200 bg-white shrink-0 flex items-center gap-1 cursor-pointer active:scale-95"
+                                  >
+                                    {copiedField === 'start-full' ? (
+                                      <>
+                                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span>คัดลอกแล้ว</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="w-3.5 h-3.5" />
+                                        <span>คัดลอก</span>
+                                      </>
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* กล่องเวลาเสร็จจริง */}
+                              <div className="bg-blue-50/80 border border-blue-300/80 rounded-xl p-2.5 flex items-start justify-between gap-2 shadow-2xs">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-blue-900 uppercase">
+                                    <span className={`h-2 w-2 rounded-full ${task.Status === 'Completed' ? 'bg-blue-600' : isRunning ? 'bg-amber-500 animate-ping' : 'bg-slate-400'}`}></span>
+                                    <span>เวลาเสร็จจริง (FINISH)</span>
+                                  </div>
+                                  <div className="text-xs sm:text-sm font-bold text-slate-900 font-mono mt-1">
+                                    {adherence.actualCompleteFormatted}
+                                  </div>
+                                  {adherence.actualCompleteTime && task.Status === 'Completed' && (
+                                    <div className="text-[10px] text-blue-800 font-mono mt-0.5 font-semibold">
+                                      เฉพาะเวลา: {adherence.actualCompleteTime}
+                                    </div>
+                                  )}
+                                </div>
+                                {adherence.isCompleted && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyText(adherence.actualCompleteFormatted, 'finish-full')}
+                                    title="คัดลอกวันและเวลาเสร็จ"
+                                    className="px-2 py-1 text-[11px] font-bold text-blue-800 hover:text-blue-950 hover:bg-blue-100 rounded-lg transition-colors border border-blue-200 bg-white shrink-0 flex items-center gap-1 cursor-pointer active:scale-95"
+                                  >
+                                    {copiedField === 'finish-full' ? (
+                                      <>
+                                        <Check className="w-3.5 h-3.5 text-blue-600" />
+                                        <span>คัดลอกแล้ว</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="w-3.5 h-3.5" />
+                                        <span>คัดลอก</span>
+                                      </>
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* ลิสต์ประวัติรอบเวลา (Session Logs) */}
+                            {taskLogs.length > 0 && (
+                              <div className="mt-2.5 pt-2 border-t border-slate-100">
+                                <button
+                                  type="button"
+                                  onClick={() => setShowTimeLogsHistory(!showTimeLogsHistory)}
+                                  className="text-[11px] font-semibold text-slate-600 hover:text-blue-700 flex items-center gap-1 transition-colors cursor-pointer"
+                                >
+                                  {showTimeLogsHistory ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                  <span>{showTimeLogsHistory ? 'ซ่อน' : 'แสดง'}ประวัติการกดเวลาแต่ละรอบย่อย ({taskLogs.length} รายการ)</span>
+                                </button>
+                                {showTimeLogsHistory && (
+                                  <div className="mt-2 space-y-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs animate-fadeIn">
+                                    {taskLogs.map((log) => (
+                                      <div key={log.LogID} className="flex items-center justify-between py-1 border-b border-slate-200/60 last:border-b-0 text-[11px]">
+                                        <div className="flex items-center gap-2">
+                                          <span className={`px-1.5 py-0.5 rounded font-bold text-[9px] ${
+                                            log.Action === 'START'
+                                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                              : log.Action === 'PAUSE'
+                                              ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                              : 'bg-blue-100 text-blue-800 border border-blue-200'
+                                          }`}>
+                                            {log.Action}
+                                          </span>
+                                          <span className="font-mono text-slate-700 font-semibold">
+                                            {formatThaiDateTime(log.Timestamp, false)}
+                                          </span>
+                                        </div>
+                                        <div className="text-right text-[10px] text-slate-500">
+                                          {log.DurationMinutes > 0 && (
+                                            <span className="font-bold text-slate-800 mr-2">{log.DurationMinutes} นาที</span>
+                                          )}
+                                          {log.Note && <span className="text-slate-500 truncate max-w-[140px] inline-block">{log.Note}</span>}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </>
                       );
@@ -1007,12 +1193,62 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                           <Play className="w-4 h-4 fill-white" />
                           <span>▶ เริ่มบันทึกเวลางานชิ้นที่เลือก (START)</span>
                         </button>
-                      ) : (
-                        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-center py-3 rounded-xl text-xs flex items-center justify-center gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          ขั้นตอนซ่อมสีนี้เสร็จสมบูรณ์เรียบร้อยแล้ว
-                        </div>
-                      )
+                      ) : (() => {
+                        const adherence = getTaskScheduleAdherence(task, timeLogs);
+                        return (
+                          <div className="bg-emerald-50/90 border border-emerald-300 text-emerald-950 rounded-xl p-3.5 space-y-2 shadow-xs">
+                            <div className="flex items-center justify-between">
+                              <div className="text-xs font-bold text-emerald-900 flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>ขั้นตอนซ่อมสีนี้เสร็จสมบูรณ์เรียบร้อยแล้ว</span>
+                              </div>
+                              <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-md">
+                                พร้อมส่งต่องวดถัดไป
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-emerald-200/80 text-xs">
+                              <div className="bg-white/95 p-2 rounded-lg border border-emerald-200 flex items-center justify-between">
+                                <div className="min-w-0">
+                                  <span className="text-[10px] text-slate-500 block">🟢 เวลาเริ่มงานจริง:</span>
+                                  <span className="font-bold font-mono text-slate-900 text-xs block mt-0.5 truncate">
+                                    {adherence.actualStartFormatted}
+                                  </span>
+                                </div>
+                                {adherence.hasStarted && adherence.actualStartFormatted !== 'ยังไม่ได้เริ่มงาน' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyText(adherence.actualStartFormatted, 'btm-start')}
+                                    title="คัดลอกเวลาเริ่ม"
+                                    className="p-1 text-slate-400 hover:text-emerald-700 rounded hover:bg-slate-100 shrink-0"
+                                  >
+                                    {copiedField === 'btm-start' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="bg-white/95 p-2 rounded-lg border border-emerald-200 flex items-center justify-between">
+                                <div className="min-w-0">
+                                  <span className="text-[10px] text-slate-500 block">🏁 เวลาเสร็จจริง:</span>
+                                  <span className="font-bold font-mono text-slate-900 text-xs block mt-0.5 truncate">
+                                    {adherence.actualCompleteFormatted}
+                                  </span>
+                                </div>
+                                {adherence.isCompleted && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyText(adherence.actualCompleteFormatted, 'btm-finish')}
+                                    title="คัดลอกเวลาเสร็จ"
+                                    className="p-1 text-slate-400 hover:text-blue-700 rounded hover:bg-slate-100 shrink-0"
+                                  >
+                                    {copiedField === 'btm-finish' ? <Check className="w-3.5 h-3.5 text-blue-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()
                     ) : (
                       <div className="grid grid-cols-2 gap-3">
                         <button

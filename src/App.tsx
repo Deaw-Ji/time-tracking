@@ -38,6 +38,7 @@ import {
   saveJobToFirestore,
   deleteJobFromFirestore,
   saveJobTaskToFirestore,
+  updateJobTaskInFirestore,
   deleteJobTaskFromFirestore,
   saveTimeLogToFirestore,
   clearAllTimeLogsFromFirestore,

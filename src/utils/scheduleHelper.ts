@@ -3,7 +3,12 @@ import { SheetJobTask, SheetTimeLog } from '../types/shopFloor';
 export interface ScheduleAdherence {
   actualStartDate: string | null;
   actualStartTime: string | null;
+  actualStartTimestamp: string | null;
   actualCompleteDate: string | null;
+  actualCompleteTime: string | null;
+  actualCompleteTimestamp: string | null;
+  actualStartFormatted: string;
+  actualCompleteFormatted: string;
   hasStarted: boolean;
   isCompleted: boolean;
   startAdherence: {
@@ -69,6 +74,47 @@ export function formatThaiDate(dateStr?: string, showYear = false): string {
   return showYear ? `${day} ${month} ${shortYear}` : `${day} ${month}`;
 }
 
+/**
+ * Formats ISO timestamp to friendly Thai datetime string
+ * e.g. "15 ต.ค. 69 08:30 น." or "15 ต.ค. 08:30 น."
+ */
+export function formatThaiDateTime(isoStr?: string | null, showYear = true): string {
+  if (!isoStr) return '-';
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return isoStr;
+    const months = [
+      'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+      'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+    ];
+    const day = d.getDate();
+    const month = months[d.getMonth()];
+    const year = (d.getFullYear() + 543) % 100;
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const timeStr = `${hours}:${minutes} น.`;
+    return showYear ? `${day} ${month} ${year} ${timeStr}` : `${day} ${month} ${timeStr}`;
+  } catch {
+    return isoStr;
+  }
+}
+
+/**
+ * Formats ISO timestamp to HH:mm น. e.g. "08:30 น."
+ */
+export function formatThaiTime(isoStr?: string | null): string {
+  if (!isoStr) return '-';
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return isoStr;
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes} น.`;
+  } catch {
+    return isoStr;
+  }
+}
+
 export function getTaskScheduleAdherence(
   task: SheetJobTask,
   timeLogs: SheetTimeLog[] = [],
@@ -82,10 +128,9 @@ export function getTaskScheduleAdherence(
     .sort((a, b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
 
   const earliestStartLog = startLogs[0];
+  const actualStartTimestamp = earliestStartLog ? earliestStartLog.Timestamp : null;
   let actualStartDate = earliestStartLog ? earliestStartLog.Timestamp.split('T')[0] : null;
-  const actualStartTime = earliestStartLog
-    ? new Date(earliestStartLog.Timestamp).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
-    : null;
+  let actualStartTime = earliestStartLog ? formatThaiTime(earliestStartLog.Timestamp) : null;
 
   // Fallback: If status is In Progress, Paused, or Completed, but no start log found, consider task as started
   const isStartedByStatus = task.Status === 'In Progress' || task.Status === 'Paused' || task.Status === 'Completed';
@@ -101,10 +146,39 @@ export function getTaskScheduleAdherence(
     .filter((l) => l.TaskID === task.TaskID && l.Action === 'COMPLETE')
     .sort((a, b) => new Date(b.Timestamp).getTime() - new Date(a.Timestamp).getTime());
   const latestCompleteLog = completeLogs[0];
+  const actualCompleteTimestamp = latestCompleteLog ? latestCompleteLog.Timestamp : null;
   let actualCompleteDate = latestCompleteLog ? latestCompleteLog.Timestamp.split('T')[0] : null;
+  let actualCompleteTime = latestCompleteLog ? formatThaiTime(latestCompleteLog.Timestamp) : null;
   const isCompleted = task.Status === 'Completed';
   if (!actualCompleteDate && isCompleted) {
     actualCompleteDate = task.DueDate || todayStr;
+  }
+
+  // Friendly human-readable strings for display in UI & DMS entry
+  let actualStartFormatted = '-';
+  if (actualStartTimestamp) {
+    actualStartFormatted = formatThaiDateTime(actualStartTimestamp, true);
+  } else if (hasStarted && actualStartDate) {
+    actualStartFormatted = formatThaiDate(actualStartDate, true);
+  } else {
+    actualStartFormatted = 'ยังไม่ได้เริ่มงาน';
+  }
+
+  let actualCompleteFormatted = '-';
+  if (isCompleted) {
+    if (actualCompleteTimestamp) {
+      actualCompleteFormatted = formatThaiDateTime(actualCompleteTimestamp, true);
+    } else if (actualCompleteDate) {
+      actualCompleteFormatted = formatThaiDate(actualCompleteDate, true);
+    } else {
+      actualCompleteFormatted = 'เสร็จสมบูรณ์';
+    }
+  } else if (task.Status === 'In Progress') {
+    actualCompleteFormatted = 'กำลังดำเนินการ...';
+  } else if (task.Status === 'Paused') {
+    actualCompleteFormatted = 'พักชั่วคราว';
+  } else {
+    actualCompleteFormatted = 'ยังไม่เสร็จสิ้น';
   }
 
   // --- 1. Evaluate Start Adherence ---
@@ -239,7 +313,12 @@ export function getTaskScheduleAdherence(
   return {
     actualStartDate,
     actualStartTime,
+    actualStartTimestamp,
     actualCompleteDate,
+    actualCompleteTime,
+    actualCompleteTimestamp,
+    actualStartFormatted,
+    actualCompleteFormatted,
     hasStarted,
     isCompleted,
     startAdherence,
