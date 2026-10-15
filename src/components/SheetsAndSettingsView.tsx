@@ -73,6 +73,7 @@ interface SheetsAndSettingsViewProps {
   onEditCarPart: (oldName: string, newName: string) => void;
   onDeleteCarPart: (partName: string) => void;
   onUpdateMasterSopStages: (stages: MasterSopStage[]) => void;
+  onDeleteMasterSopStage: (stageId: string) => void;
   onClearAllTimeLogs?: () => void;
   showToast?: (msg: string) => void;
 }
@@ -104,6 +105,7 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
   onEditCarPart,
   onDeleteCarPart,
   onUpdateMasterSopStages,
+  onDeleteMasterSopStage,
   onClearAllTimeLogs = () => {},
   showToast = () => {},
 }) => {
@@ -634,14 +636,7 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
     setEditingStage(null);
   };
 
-  const handleDeleteStage = (stageId: string) => {
-    if (masterSopStages.length <= 1) {
-      showToast('ต้องมีขั้นตอนมาตรฐานอย่างน้อย 1 ขั้นตอน');
-      return;
-    }
-    const stage = masterSopStages.find((s) => s.id === stageId);
-    if (stage) setStageToDelete(stage);
-  };
+  // Removed handleDeleteStage from here to move it to App.tsx
 
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1887,7 +1882,7 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDeleteStage(stage.id)}
+                            onClick={() => onDeleteMasterSopStage(stage.id)}
                             className="p-1.5 text-slate-400 hover:text-red-600 transition-colors"
                             title="ลบขั้นตอนนี้"
                           >
@@ -3269,11 +3264,7 @@ export const SheetsAndSettingsView: React.FC<SheetsAndSettingsViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const remaining = masterSopStages
-                    .filter((s) => s.id !== stageToDelete.id)
-                    .map((s, idx) => ({ ...s, stepNumber: idx + 1 }));
-                  onUpdateMasterSopStages(remaining);
-                  showToast(`ลบขั้นตอน "${stageToDelete.name}" สำเร็จ`);
+                  onDeleteMasterSopStage(stageToDelete.id);
                   setStageToDelete(null);
                 }}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg cursor-pointer"

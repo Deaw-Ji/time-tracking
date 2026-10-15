@@ -84,6 +84,15 @@ interface JobsManagerViewProps {
   onUpdateTaskAssignedTechs?: (taskId: string, newAssignedTechs: string[]) => void;
   onUpdateTaskSchedule?: (taskId: string, startDate: string, dueDate: string) => void;
   onDeleteJobTask?: (taskId: string) => void;
+  onEditJobTask?: (taskId: string, updatedTask: Partial<SheetJobTask>) => void;
+  onAddJobTask?: (jobId: string, subtask: {
+    TaskName: string;
+    AssignedTechs: string[];
+    StartDate: string;
+    DueDate: string;
+    StandardMinutes: number;
+    PartsChecklist: string;
+  }) => void;
   timeLogs?: SheetTimeLog[];
 }
 
@@ -111,9 +120,42 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
   onUpdateTaskAssignedTechs,
   onUpdateTaskSchedule,
   onDeleteJobTask,
+  onEditJobTask,
+  onAddJobTask,
   timeLogs = [],
 }) => {
   const [statusFilter, setStatusFilter] = useState<'ALL' | JobStatus>('ALL');
+  const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
+  const [newTask, setNewTask] = useState<NewSubtaskFormItem>({
+    TaskName: '',
+    AssignedTechs: [],
+    StartDate: '',
+    DueDate: '',
+    StandardMinutes: 60,
+    includedParts: [],
+  });
+
+  const handleAddJobTaskSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedJobForDetail) return;
+    onAddJobTask?.(selectedJobForDetail.JobID, {
+      TaskName: newTask.TaskName,
+      AssignedTechs: newTask.AssignedTechs,
+      StartDate: newTask.StartDate,
+      DueDate: newTask.DueDate,
+      StandardMinutes: newTask.StandardMinutes,
+      PartsChecklist: newTask.includedParts.join(','),
+    });
+    setIsAddTaskModalOpen(false);
+    setNewTask({
+        TaskName: '',
+        AssignedTechs: [],
+        StartDate: '',
+        DueDate: '',
+        StandardMinutes: 60,
+        includedParts: [],
+    });
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [editingTaskTechsId, setEditingTaskTechsId] = useState<string | null>(null);
   const [draftTaskTechs, setDraftTaskTechs] = useState<string[]>([]);
@@ -241,6 +283,7 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
 
   // Helper to build default subtasks from Master SOP Stages
   const buildInitialSubtasks = (parts: string[], targetDueDate: string) => {
+    console.log('buildInitialSubtasks called with masterSopStages:', masterSopStages);
     const today = new Date().toISOString().split('T')[0];
     if (masterSopStages && masterSopStages.length > 0) {
       return masterSopStages.map((stage) => {
@@ -876,6 +919,12 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                 <h3 className="text-xs font-bold text-slate-900 flex items-center gap-2">
                   <Layers className="w-4 h-4 text-blue-600" />
                   ขั้นตอนงานย่อยและชิ้นงานที่ต้องทำ ({jobTasks.filter((t) => t.JobID === selectedJobForDetail.JobID).length} ขั้นตอน):
+                  <button
+                    onClick={() => setIsAddTaskModalOpen(true)}
+                    className="ml-4 text-xs bg-blue-600 text-white px-2 py-1 rounded-md hover:bg-blue-700 cursor-pointer"
+                  >
+                    + เพิ่มขั้นตอน
+                  </button>
                 </h3>
 
                 <div className="overflow-x-auto border border-slate-200 rounded-xl">
@@ -888,6 +937,7 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                         <th className="py-2.5 px-3">ชิ้นส่วน (Checklist)</th>
                         <th className="py-2.5 px-3 text-center">สถานะ</th>
                         <th className="py-2.5 px-3 text-right">เวลาจริง / SLA</th>
+                        <th className="py-2.5 px-3 text-center">จัดการ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -909,10 +959,30 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                               className={isRunning ? 'bg-emerald-50/50 font-semibold' : ''}
                             >
                               <td className="py-3 px-3">
-                                <span className="font-bold text-slate-900 block">{task.TaskName}</span>
-                                <span className="text-[10px] text-slate-400 font-mono">
-                                  {task.TaskID}
-                                </span>
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <span className="font-bold text-slate-900 block">{task.TaskName}</span>
+                                    <span className="text-[10px] text-slate-400 font-mono">{task.TaskID}</span>
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => { /* Implement edit logic */ }}
+                                      className="p-1 text-slate-400 hover:text-blue-600 rounded"
+                                      title="แก้ไขขั้นตอน"
+                                    >
+                                      <Edit2 className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setTaskToDelete(task)}
+                                      className="p-1 text-slate-400 hover:text-red-600 rounded"
+                                      title="ลบขั้นตอน"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </div>
                               </td>
                               <td className="py-3 px-3">
                                 <div className="flex items-center justify-between gap-2">
@@ -1587,6 +1657,80 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
               >
                 บันทึกการแก้ไข
               </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {isAddTaskModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-hidden animate-fadeIn">
+          <form
+            onSubmit={handleAddJobTaskSubmit}
+            className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full flex flex-col shadow-2xl overflow-hidden animate-scaleUp"
+          >
+            <div className="shrink-0 flex items-center justify-between border-b border-slate-200 px-6 py-4 bg-slate-50/50">
+              <h2 className="text-lg font-bold text-slate-900">เพิ่มขั้นตอนย่อย</h2>
+              <button type="button" onClick={() => setIsAddTaskModalOpen(false)} className="text-slate-500 hover:text-slate-900 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">ชื่อขั้นตอน *</label>
+                <select
+                  required
+                  value={masterSopStages.some((s) => s.name === newTask.TaskName) ? newTask.TaskName : 'OTHER'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'OTHER') {
+                      setNewTask({ ...newTask, TaskName: '' });
+                    } else {
+                      const stage = masterSopStages.find((s) => s.name === val);
+                      setNewTask({
+                        ...newTask,
+                        TaskName: val,
+                        StandardMinutes: stage?.standardMinutes || 60,
+                      });
+                    }
+                  }}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                >
+                  <option value="OTHER">-- เลือกขั้นตอน หรือระบุเอง --</option>
+                  {masterSopStages.map((stage) => (
+                    <option key={stage.id} value={stage.name}>
+                      {stage.name}
+                    </option>
+                  ))}
+                </select>
+                {(!masterSopStages.some((s) => s.name === newTask.TaskName) || newTask.TaskName === '') && (
+                  <input
+                    type="text"
+                    required
+                    placeholder="พิมพ์ชื่อขั้นตอน..."
+                    value={newTask.TaskName}
+                    onChange={(e) => setNewTask({ ...newTask, TaskName: e.target.value })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 mt-2"
+                  />
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">เริ่ม</label>
+                  <input type="date" required value={newTask.StartDate} onChange={(e) => setNewTask({...newTask, StartDate: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">กำหนดเสร็จ</label>
+                  <input type="date" required value={newTask.DueDate} onChange={(e) => setNewTask({...newTask, DueDate: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">เวลามาตรฐาน (นาที)</label>
+                <input type="number" required value={newTask.StandardMinutes} onChange={(e) => setNewTask({...newTask, StandardMinutes: parseInt(e.target.value)})} className="w-full border border-slate-300 rounded-lg px-3 py-2" />
+              </div>
+            </div>
+            <div className="shrink-0 flex justify-end gap-2 border-t border-slate-200 px-6 py-3.5 bg-slate-50/50">
+              <button type="button" onClick={() => setIsAddTaskModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer">ยกเลิก</button>
+              <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer">บันทึก</button>
             </div>
           </form>
         </div>

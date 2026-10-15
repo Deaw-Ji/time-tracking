@@ -724,17 +724,38 @@ export default function App() {
   };
 
   const handleUpdateMasterSopStages = (stages: MasterSopStage[]) => {
-    const newIds = new Set(stages.map((s) => s.id));
+    console.log('handleUpdateMasterSopStages called. stages:', stages);
+    console.log('Current masterSopStages:', masterSopStages);
+    // Re-index stepNumbers based on current order
+    const sortedStages = stages
+      .sort((a, b) => a.stepNumber - b.stepNumber)
+      .map((s, index) => ({ ...s, stepNumber: index + 1 }));
+
+    const newIds = new Set(sortedStages.map((s) => s.id));
     const deletedStages = masterSopStages.filter((s) => !newIds.has(s.id));
-    setMasterSopStages(stages);
-    localStorage.setItem('autofloor_master_sop_stages', JSON.stringify(stages));
-    saveMasterSopStagesToFirestore(stages).catch((e) => console.error('Save stages error:', e));
+    
+    setMasterSopStages(sortedStages);
+    localStorage.setItem('autofloor_master_sop_stages', JSON.stringify(sortedStages));
+    saveMasterSopStagesToFirestore(sortedStages).catch((e) => console.error('Save stages error:', e));
+    
     if (deletedStages.length > 0) {
       deletedStages.forEach((ds) => {
         deleteMasterSopStageFromFirestore(ds.id).catch((e) => console.error('Delete stage error:', e));
       });
     }
     showToast('บันทึกขั้นตอนงานซ่อมหลักมาตรฐาน (Master SOP) เรียบร้อยแล้ว');
+  };
+
+  const handleDeleteMasterSopStage = (stageId: string) => {
+    if (masterSopStages.length <= 1) {
+      showToast('ต้องมีขั้นตอนมาตรฐานอย่างน้อย 1 ขั้นตอน');
+      return;
+    }
+    const remaining = masterSopStages
+      .filter((s) => s.id !== stageId)
+      .map((s, idx) => ({ ...s, stepNumber: idx + 1 }));
+    handleUpdateMasterSopStages(remaining);
+    showToast('ลบขั้นตอนงานซ่อมหลักสำเร็จ');
   };
 
   const handleUpdateDepartments = (newDepts: MasterDepartment[]) => {
@@ -877,6 +898,15 @@ export default function App() {
     setJobTasks((prev) => prev.filter((t) => t.TaskID !== taskId));
     deleteJobTaskFromFirestore(taskId).catch((e) => console.error(e));
     showToast(`ลบขั้นตอน ${taskId} เรียบร้อยแล้ว`);
+  };
+
+  const handleEditJobTask = (taskId: string, updatedTask: Partial<SheetJobTask>) => {
+    setJobTasks((prev) =>
+      prev.map((t) => (t.TaskID === taskId ? { ...t, ...updatedTask } : t))
+    );
+    // Update firestore
+    updateJobTaskInFirestore(taskId, updatedTask).catch((e) => console.error('Error updating task:', e));
+    showToast(`อัปเดตขั้นตอน ${taskId} เรียบร้อยแล้ว`);
   };
 
   const handleUpdateSettings = (newSettings: SheetSetting[]) => {
@@ -1606,6 +1636,8 @@ export default function App() {
             onAddSubtaskToExistingJob={handleAddSubtaskToExistingJob}
             onDeleteJob={handleDeleteJob}
             onEditJob={handleEditJob}
+            onEditJobTask={handleEditJobTask}
+            onAddJobTask={handleAddSubtaskToExistingJob}
             onClearAllJobs={handleClearAllJobs}
           />
         )}
@@ -1669,6 +1701,7 @@ export default function App() {
             onEditCarPart={handleEditCarPart}
             onDeleteCarPart={handleDeleteCarPart}
             onUpdateMasterSopStages={handleUpdateMasterSopStages}
+            onDeleteMasterSopStage={handleDeleteMasterSopStage}
             onClearAllTimeLogs={handleClearAllTimeLogs}
             showToast={showToast}
           />

@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   setDoc,
+  updateDoc,
   deleteDoc,
   onSnapshot,
   getDocs,
@@ -496,6 +497,16 @@ export async function deleteHelpRequestFromFirestore(requestId: string) {
     await deleteDoc(doc(db, 'helpRequests', requestId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `helpRequests/${requestId}`);
+    throw error;
+  }
+}
+
+export async function updateJobTaskInFirestore(taskId: string, updatedTask: Partial<SheetJobTask>) {
+  try {
+    const taskRef = doc(db, 'jobTasks', taskId);
+    await updateDoc(taskRef, updatedTask as any);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `jobTasks/${taskId}`);
     throw error;
   }
 }
