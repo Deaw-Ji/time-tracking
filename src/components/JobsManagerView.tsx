@@ -138,13 +138,17 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
   const handleAddJobTaskSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedJobForDetail) return;
+    if (newTask.AssignedTechs.length === 0 || newTask.includedParts.length === 0) {
+      alert('กรุณาเลือกช่างและชิ้นส่วนอย่างน้อย 1 รายการ');
+      return;
+    }
     onAddJobTask?.(selectedJobForDetail.JobID, {
       TaskName: newTask.TaskName,
       AssignedTechs: newTask.AssignedTechs,
       StartDate: newTask.StartDate,
       DueDate: newTask.DueDate,
       StandardMinutes: newTask.StandardMinutes,
-      PartsChecklist: newTask.includedParts.join(','),
+      PartsChecklist: newTask.includedParts.map((p) => `${p}:todo`).join(','),
     });
     setIsAddTaskModalOpen(false);
     setNewTask({
@@ -920,7 +924,17 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                   <Layers className="w-4 h-4 text-blue-600" />
                   ขั้นตอนงานย่อยและชิ้นงานที่ต้องทำ ({jobTasks.filter((t) => t.JobID === selectedJobForDetail.JobID).length} ขั้นตอน):
                   <button
-                    onClick={() => setIsAddTaskModalOpen(true)}
+                    onClick={() => {
+                      setNewTask({
+                        TaskName: masterSopStages[0]?.name || 'เตรียมพื้นผิว',
+                        AssignedTechs: technicians.length > 0 ? [technicians[0].Email] : [],
+                        StartDate: selectedJobForDetail?.DueDate || new Date().toISOString().split('T')[0],
+                        DueDate: selectedJobForDetail?.DueDate || new Date().toISOString().split('T')[0],
+                        StandardMinutes: masterSopStages[0]?.standardMinutes || 60,
+                        includedParts: carParts.length > 0 ? [...carParts] : ['กันชนหน้า', 'ฝากระโปรงหน้า'],
+                      });
+                      setIsAddTaskModalOpen(true);
+                    }}
                     className="ml-4 text-xs bg-blue-600 text-white px-2 py-1 rounded-md hover:bg-blue-700 cursor-pointer"
                   >
                     + เพิ่มขั้นตอน
@@ -1726,6 +1740,66 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">เวลามาตรฐาน (นาที)</label>
                 <input type="number" required value={newTask.StandardMinutes} onChange={(e) => setNewTask({...newTask, StandardMinutes: parseInt(e.target.value)})} className="w-full border border-slate-300 rounded-lg px-3 py-2" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">ช่างผู้รับผิดชอบขั้นตอนนึ้ *</label>
+                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-2 border border-slate-200 rounded-lg bg-slate-50">
+                  {technicians.map((tech) => {
+                    const isAssigned = newTask.AssignedTechs.includes(tech.Email);
+                    return (
+                      <button
+                        type="button"
+                        key={tech.Email}
+                        onClick={() => {
+                          const next = isAssigned
+                            ? newTask.AssignedTechs.filter((e) => e !== tech.Email)
+                            : [...newTask.AssignedTechs, tech.Email];
+                          setNewTask({ ...newTask, AssignedTechs: next });
+                        }}
+                        className={`px-2.5 py-1 text-xs rounded-md border font-medium cursor-pointer transition-all ${
+                          isAssigned
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                        }`}
+                      >
+                        {tech.Name || tech.Email} {isAssigned ? '✓' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+                {newTask.AssignedTechs.length === 0 && (
+                  <p className="text-[11px] text-red-600 font-semibold mt-1">กรุณาเลือกช่างอย่างน้อย 1 คน</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">ชิ้นส่วนที่ต้องทำในขั้นตอนนี้ (Checklist) *</label>
+                <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-2 border border-slate-200 rounded-lg bg-slate-50">
+                  {carParts.map((part) => {
+                    const isIncluded = newTask.includedParts.includes(part);
+                    return (
+                      <button
+                        type="button"
+                        key={part}
+                        onClick={() => {
+                          const next = isIncluded
+                            ? newTask.includedParts.filter((p) => p !== part)
+                            : [...newTask.includedParts, part];
+                          setNewTask({ ...newTask, includedParts: next });
+                        }}
+                        className={`px-2.5 py-1 text-xs rounded-md border font-medium cursor-pointer transition-all ${
+                          isIncluded
+                            ? 'bg-emerald-600 text-white border-emerald-600'
+                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                        }`}
+                      >
+                        {part} {isIncluded ? '✓' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+                {newTask.includedParts.length === 0 && (
+                  <p className="text-[11px] text-red-600 font-semibold mt-1">กรุณาเลือกชิ้นส่วนอย่างน้อย 1 ชิ้น</p>
+                )}
               </div>
             </div>
             <div className="shrink-0 flex justify-end gap-2 border-t border-slate-200 px-6 py-3.5 bg-slate-50/50">

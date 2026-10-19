@@ -636,7 +636,11 @@ export default function App() {
       PartsChecklist: string;
     }
   ) => {
-    const newTaskId = `TSK-${1001 + jobTasks.length}`;
+    const maxNum = jobTasks.reduce((max, t) => {
+      const num = parseInt(t.TaskID.replace('TSK-', ''), 10);
+      return isNaN(num) ? max : Math.max(max, num);
+    }, 1000);
+    const newTaskId = `TSK-${maxNum + 1}`;
     const created: SheetJobTask = {
       TaskID: newTaskId,
       JobID: jobId,
