@@ -672,6 +672,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   }
                 });
 
+                // Compute time per technician across all tasks of this job
+                const techTimeMap = new Map<string, number>();
+                jobTasksList.forEach((task) => {
+                  const taskLogs = timeLogs.filter((l) => l.TaskID === task.TaskID);
+                  const sortedLogs = [...taskLogs].sort((a, b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
+                  let techActiveStart: { [techEmail: string]: string } = {};
+                  sortedLogs.forEach((log) => {
+                    const tech = log.TechEmail.toLowerCase();
+                    if (log.Action === "START") {
+                      techActiveStart[tech] = log.Timestamp;
+                    } else if ((log.Action === "PAUSE" || log.Action === "COMPLETE") && techActiveStart[tech]) {
+                      const secs = Math.max(
+                        0,
+                        Math.floor((new Date(log.Timestamp).getTime() - new Date(techActiveStart[tech]).getTime()) / 1000)
+                      );
+                      techTimeMap.set(tech, (techTimeMap.get(tech) || 0) + secs);
+                      delete techActiveStart[tech];
+                    }
+                  });
+                  Object.entries(techActiveStart).forEach(([tech, startTs]) => {
+                    if (task.Status === "In Progress") {
+                      const secs = Math.max(0, Math.floor((nowMs - new Date(startTs).getTime()) / 1000));
+                      techTimeMap.set(tech, (techTimeMap.get(tech) || 0) + secs);
+                    }
+                  });
+                });
+
                 return (
                   <React.Fragment key={j.JobID}>
                     {/* TOP-LEVEL JOB ROW */}
@@ -823,11 +850,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         </span>
                       </td>
 
-                      {/* Total Real-time Accumulated Time for this Job */}
-                      <td className="py-3.5 px-4 align-top text-right font-mono font-bold tabular-nums">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-900 text-xs font-mono shadow-2xs border border-slate-200">
-                          <Clock className="w-3.5 h-3.5 text-blue-600" />
-                          <span>{formatClockFromSeconds(jobTotalSec)}</span>
+                      {/* Total & Per-Technician Real-time Accumulated Time for this Job */}
+                      <td className="py-3.5 px-4 align-top text-right font-mono tabular-nums">
+                        <div className="flex flex-col items-end gap-1">
+                          {techTimeMap.size > 0 ? (
+                            <div className="flex flex-col gap-0.5 text-[10px] text-slate-600">
+                              {Array.from(techTimeMap.entries()).map(([techEmail, secs]) => (
+                                <div key={techEmail} className="flex items-center justify-end gap-1.5">
+                                  <span className="text-slate-500 font-sans">{getTechName(techEmail)}:</span>
+                                  <span className="font-bold text-slate-800">{formatClockFromSeconds(secs)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 font-sans">ยังไม่มีเวลาทำงาน</span>
+                          )}
+                          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 text-slate-900 text-xs font-bold shadow-2xs border border-slate-200 mt-0.5">
+                            <Clock className="w-3 h-3 text-blue-600" />
+                            <span>รวม: {formatClockFromSeconds(jobTotalSec)}</span>
+                          </div>
                         </div>
                       </td>
 

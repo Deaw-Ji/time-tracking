@@ -84,6 +84,34 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
   const activeTechObj =
     users.find((u) => u.Email.toLowerCase() === activeTechEmail.toLowerCase()) || currentUser;
 
+  const getTechDisplayName = (email: string) => {
+    const u = users.find((user) => user.Email.toLowerCase() === email.toLowerCase());
+    if (!u) return email.split('@')[0];
+    return u.Nickname || u.Name || email.split('@')[0];
+  };
+
+  const getTaskTechTimeBreakdown = (taskId: string) => {
+    const taskLogs = timeLogs.filter((l) => l.TaskID === taskId);
+    const sortedLogs = [...taskLogs].sort((a, b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
+    const techMap = new Map<string, number>();
+    let activeStart: { [tech: string]: string } = {};
+    sortedLogs.forEach((log) => {
+      const tech = log.TechEmail.toLowerCase();
+      if (log.Action === 'START') {
+        activeStart[tech] = log.Timestamp;
+      } else if ((log.Action === 'PAUSE' || log.Action === 'COMPLETE') && activeStart[tech]) {
+        const secs = Math.max(0, Math.floor((new Date(log.Timestamp).getTime() - new Date(activeStart[tech]).getTime()) / 1000));
+        techMap.set(tech, (techMap.get(tech) || 0) + secs);
+        delete activeStart[tech];
+      }
+    });
+    Object.entries(activeStart).forEach(([tech, startTs]) => {
+      const secs = Math.max(0, Math.floor((nowMs - new Date(startTs).getTime()) / 1000));
+      techMap.set(tech, (techMap.get(tech) || 0) + secs);
+    });
+    return techMap;
+  };
+
   // Selected Task ID to view / work on (null = Master Queue Screen)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
@@ -730,8 +758,29 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                               {adherence.actualCompleteFormatted}
                             </span>
                           </td>
-                          <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono text-slate-800 font-bold text-[11px]">
-                            {formatClockFromSeconds(task.TotalMinutes * 60)}
+                          <td className="py-3.5 px-3 text-center whitespace-nowrap font-mono text-slate-800 text-[11px]">
+                            {(() => {
+                              const techMap = getTaskTechTimeBreakdown(task.TaskID);
+                              return (
+                                <div className="flex flex-col items-center gap-0.5">
+                                  {techMap.size > 0 ? (
+                                    <div className="flex flex-col gap-0.5 text-[10px] text-slate-600">
+                                      {Array.from(techMap.entries()).map(([techEmail, secs]) => (
+                                        <div key={techEmail} className="flex items-center justify-center gap-1">
+                                          <span className="text-slate-500">{getTechDisplayName(techEmail)}:</span>
+                                          <span className="font-bold text-slate-800">{formatClockFromSeconds(secs)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400">00:00:00</span>
+                                  )}
+                                  <div className="font-bold text-slate-900 border-t border-slate-200 pt-0.5 mt-0.5 w-full">
+                                    รวม: {formatClockFromSeconds(task.TotalMinutes * 60)}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="py-3.5 px-2 text-right whitespace-nowrap">
                             <ChevronRight className="w-4 h-4 text-slate-400 inline" />
@@ -1198,9 +1247,28 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
 
                   {/* Timer & Main Action Buttons */}
                   <div className="pt-2 border-t border-slate-100 space-y-3">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-500 font-medium">เวลาซ่อมรวมสะสม:</span>
-                      <span className="font-mono text-lg font-bold text-slate-900 tabular-nums">
+                    {/* Line 1: Per-technician breakdown */}
+                    {(() => {
+                      const techMap = getTaskTechTimeBreakdown(task.TaskID);
+                      return techMap.size > 0 ? (
+                        <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl space-y-1.5">
+                          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                            ⏱ เวลาทำงานแยกตามช่างแต่ละคน:
+                          </div>
+                          {Array.from(techMap.entries()).map(([techEmail, secs]) => (
+                            <div key={techEmail} className="flex items-center justify-between text-xs">
+                              <span className="text-slate-700 font-medium">👤 {getTechDisplayName(techEmail)}</span>
+                              <span className="font-mono font-bold text-slate-800">{formatClockFromSeconds(secs)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null;
+                    })()}
+
+                    {/* Line 2: Combined Total */}
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+                      <span className="text-slate-700 font-bold">เวลาซ่อมรวมสะสม:</span>
+                      <span className="font-mono text-xl font-extrabold text-blue-700 tabular-nums">
                         {formatClockFromSeconds(currentTotalSeconds)}
                       </span>
                     </div>
