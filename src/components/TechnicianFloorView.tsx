@@ -49,7 +49,8 @@ interface TechnicianFloorViewProps {
     taskId: string,
     techEmail: string,
     action: TimeLogAction,
-    note: string
+    note: string,
+    updatedChecklist?: string
   ) => void;
   onUpdateTaskChecklist: (taskId: string, checklistString: string) => void;
   helpRequests?: HelpRequest[];
@@ -101,6 +102,7 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
   // Copy feedback state & session log history drawer
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [showTimeLogsHistory, setShowTimeLogsHistory] = useState(false);
+  const [confirmCompleteEntireTask, setConfirmCompleteEntireTask] = useState<SheetJobTask | null>(null);
 
   const handleCopyText = (text: string, fieldId: string) => {
     if (!text || text === '-' || text === 'ยังไม่ได้เริ่มงาน' || text === 'ยังไม่เสร็จสิ้น') return;
@@ -268,12 +270,12 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
     setPauseModalTaskId(null);
   };
 
-  // Helper to trigger COMPLETE for the active parts
+  // Helper to trigger completing currently active parts (pauses if more parts remain, completes if all parts are done)
   const handleCompleteActiveParts = (task: SheetJobTask, activePartsFromSession: string[]) => {
     const listItems = task.PartsChecklist
       ? task.PartsChecklist.split(',').map((p) => {
           const [name, state] = p.split(':');
-          return { name, state };
+          return { name, state: state || 'todo' };
         })
       : [];
 
@@ -285,23 +287,23 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
     });
 
     const checklistString = updatedList.map((i) => `${i.name}:${i.state}`).join(',');
-    const hasPendingParts = updatedList.some((item) => item.state === 'todo');
-
-    onUpdateTaskChecklist(task.TaskID, checklistString);
+    const hasPendingParts = updatedList.some((item) => item.state !== 'done');
 
     if (hasPendingParts) {
       onRecordTimeAction(
         task.TaskID,
         activeTechEmail,
         'PAUSE',
-        `เสร็จบางส่วนแล้ว: ทำสี [${activePartsFromSession.join(', ')}] เรียบร้อยแล้วค้างส่วนเหลือ`
+        `บันทึกเสร็จเฉพาะชิ้น: [${activePartsFromSession.join(', ')}] (พักเวลารอทำชิ้นที่เหลือ)`,
+        checklistString
       );
     } else {
       onRecordTimeAction(
         task.TaskID,
         activeTechEmail,
         'COMPLETE',
-        `เสร็จครบหมดแล้ว: ทำสี [${activePartsFromSession.join(', ')}] ครบเรียบร้อย`
+        `เสร็จครบทุกชิ้นแล้ว: ทำสี [${activePartsFromSession.join(', ')}] ครบเรียบร้อย`,
+        checklistString
       );
     }
 
@@ -310,6 +312,32 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
       delete copy[task.TaskID];
       return copy;
     });
+  };
+
+  // Helper to force complete ENTIRE task 100% (marks all checklist items done and sets task to Completed)
+  const handleCompleteEntireTask100 = (task: SheetJobTask) => {
+    const listItems = task.PartsChecklist
+      ? task.PartsChecklist.split(',').map((p) => {
+          const [name] = p.split(':');
+          return `${name}:done`;
+        }).join(',')
+      : '';
+
+    onRecordTimeAction(
+      task.TaskID,
+      activeTechEmail,
+      'COMPLETE',
+      'เสร็จสิ้นขั้นตอนนี้ทั้งหมด 100% (COMPLETE)',
+      listItems
+    );
+
+    setCheckedPartsToStart((prev) => {
+      const copy = { ...prev };
+      delete copy[task.TaskID];
+      return copy;
+    });
+
+    setConfirmCompleteEntireTask(null);
   };
 
   // Find which parts are currently active in the running session for this task
@@ -1177,100 +1205,137 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                       </span>
                     </div>
 
-                    {!isRunning ? (
-                      task.Status !== 'Completed' ? (
-                        <button
-                          type="button"
-                          onClick={() => handleStartSession(task)}
-                          disabled={currentCheckedToStart.length === 0}
-                          className={`w-full py-4 px-4 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 transition-all shadow-sm ${
-                            currentCheckedToStart.length === 0
-                              ? 'bg-slate-300 border-slate-300 cursor-not-allowed opacity-60'
-                              : 'bg-blue-600 hover:bg-blue-500 border-blue-600 cursor-pointer active:scale-[0.98]'
-                          }`}
-                          style={{ minHeight: '48px' }}
-                        >
-                          <Play className="w-4 h-4 fill-white" />
-                          <span>▶ เริ่มบันทึกเวลางานชิ้นที่เลือก (START)</span>
-                        </button>
-                      ) : (() => {
-                        const adherence = getTaskScheduleAdherence(task, timeLogs);
-                        return (
-                          <div className="bg-emerald-50/90 border border-emerald-300 text-emerald-950 rounded-xl p-3.5 space-y-2 shadow-xs">
-                            <div className="flex items-center justify-between">
-                              <div className="text-xs font-bold text-emerald-900 flex items-center gap-2">
-                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                                <span>ขั้นตอนซ่อมสีนี้เสร็จสมบูรณ์เรียบร้อยแล้ว</span>
+                    {task.Status === 'Completed' ? (() => {
+                      const adherence = getTaskScheduleAdherence(task, timeLogs);
+                      return (
+                        <div className="bg-emerald-50/90 border border-emerald-300 text-emerald-950 rounded-xl p-3.5 space-y-2 shadow-xs">
+                          <div className="flex items-center justify-between">
+                            <div className="text-xs font-bold text-emerald-900 flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span>ขั้นตอนซ่อมสีนี้เสร็จสมบูรณ์เรียบร้อยแล้ว</span>
+                            </div>
+                            <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-md">
+                              พร้อมส่งต่องวดถัดไป
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-emerald-200/80 text-xs">
+                            <div className="bg-white/95 p-2 rounded-lg border border-emerald-200 flex items-center justify-between">
+                              <div className="min-w-0">
+                                <span className="text-[10px] text-slate-500 block">🟢 เวลาเริ่มงานจริง:</span>
+                                <span className="font-bold font-mono text-slate-900 text-xs block mt-0.5 truncate">
+                                  {adherence.actualStartFormatted}
+                                </span>
                               </div>
-                              <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-md">
-                                พร้อมส่งต่องวดถัดไป
-                              </span>
+                              {adherence.hasStarted && adherence.actualStartFormatted !== 'ยังไม่ได้เริ่มงาน' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyText(adherence.actualStartFormatted, 'btm-start')}
+                                  title="คัดลอกเวลาเริ่ม"
+                                  className="p-1 text-slate-400 hover:text-emerald-700 rounded hover:bg-slate-100 shrink-0"
+                                >
+                                  {copiedField === 'btm-start' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                </button>
+                              )}
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-emerald-200/80 text-xs">
-                              <div className="bg-white/95 p-2 rounded-lg border border-emerald-200 flex items-center justify-between">
-                                <div className="min-w-0">
-                                  <span className="text-[10px] text-slate-500 block">🟢 เวลาเริ่มงานจริง:</span>
-                                  <span className="font-bold font-mono text-slate-900 text-xs block mt-0.5 truncate">
-                                    {adherence.actualStartFormatted}
-                                  </span>
-                                </div>
-                                {adherence.hasStarted && adherence.actualStartFormatted !== 'ยังไม่ได้เริ่มงาน' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCopyText(adherence.actualStartFormatted, 'btm-start')}
-                                    title="คัดลอกเวลาเริ่ม"
-                                    className="p-1 text-slate-400 hover:text-emerald-700 rounded hover:bg-slate-100 shrink-0"
-                                  >
-                                    {copiedField === 'btm-start' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                                  </button>
-                                )}
+                            <div className="bg-white/95 p-2 rounded-lg border border-emerald-200 flex items-center justify-between">
+                              <div className="min-w-0">
+                                <span className="text-[10px] text-slate-500 block">🏁 เวลาเสร็จจริง:</span>
+                                <span className="font-bold font-mono text-slate-900 text-xs block mt-0.5 truncate">
+                                  {adherence.actualCompleteFormatted}
+                                </span>
                               </div>
-
-                              <div className="bg-white/95 p-2 rounded-lg border border-emerald-200 flex items-center justify-between">
-                                <div className="min-w-0">
-                                  <span className="text-[10px] text-slate-500 block">🏁 เวลาเสร็จจริง:</span>
-                                  <span className="font-bold font-mono text-slate-900 text-xs block mt-0.5 truncate">
-                                    {adherence.actualCompleteFormatted}
-                                  </span>
-                                </div>
-                                {adherence.isCompleted && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCopyText(adherence.actualCompleteFormatted, 'btm-finish')}
-                                    title="คัดลอกเวลาเสร็จ"
-                                    className="p-1 text-slate-400 hover:text-blue-700 rounded hover:bg-slate-100 shrink-0"
-                                  >
-                                    {copiedField === 'btm-finish' ? <Check className="w-3.5 h-3.5 text-blue-600" /> : <Copy className="w-3.5 h-3.5" />}
-                                  </button>
-                                )}
-                              </div>
+                              {adherence.isCompleted && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyText(adherence.actualCompleteFormatted, 'btm-finish')}
+                                  title="คัดลอกเวลาเสร็จ"
+                                  className="p-1 text-slate-400 hover:text-blue-700 rounded hover:bg-slate-100 shrink-0"
+                                >
+                                  {copiedField === 'btm-finish' ? <Check className="w-3.5 h-3.5 text-blue-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                </button>
+                              )}
                             </div>
                           </div>
-                        );
-                      })()
+                        </div>
+                      );
+                    })() : !isRunning ? (
+                      <button
+                        type="button"
+                        onClick={() => handleStartSession(task)}
+                        disabled={currentCheckedToStart.length === 0}
+                        className={`w-full py-4 px-4 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 transition-all shadow-sm ${
+                          currentCheckedToStart.length === 0
+                            ? 'bg-slate-300 border-slate-300 cursor-not-allowed opacity-60'
+                            : 'bg-blue-600 hover:bg-blue-500 border-blue-600 cursor-pointer active:scale-[0.98]'
+                        }`}
+                        style={{ minHeight: '48px' }}
+                      >
+                        <Play className="w-4 h-4 fill-white" />
+                        <span>▶ เริ่มบันทึกเวลางานชิ้นที่เลือก (START)</span>
+                      </button>
                     ) : (
-                      <div className="grid grid-cols-2 gap-3">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenPauseModal(task.TaskID)}
-                          className="py-3.5 bg-amber-500 hover:bg-amber-400 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer active:scale-[0.98]"
-                          style={{ minHeight: '48px' }}
-                        >
-                          <Pause className="w-4 h-4 fill-white" />
-                          <span>⏸ พักเวลา (PAUSE)</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleCompleteActiveParts(task, activePartsInSession)
-                          }
-                          className="py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer active:scale-[0.98]"
-                          style={{ minHeight: '48px' }}
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span>✓ ปิดงานสีชิ้นนี้ (COMPLETE)</span>
-                        </button>
+                      <div className="space-y-2">
+                        {pendingParts.length > activePartsInSession.length ? (
+                          <>
+                            <div className="grid grid-cols-2 gap-2.5">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPauseModal(task.TaskID)}
+                                className="py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-[0.98]"
+                                style={{ minHeight: '44px' }}
+                              >
+                                <Pause className="w-3.5 h-3.5 fill-white" />
+                                <span>⏸ พักเวลา (PAUSE)</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleCompleteActiveParts(task, activePartsInSession)
+                                }
+                                className="py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-[0.98]"
+                                style={{ minHeight: '44px' }}
+                                title="บันทึกชิ้นส่วนที่ทำอยู่นี้ว่าเสร็จ แล้วพักเวลารอทำชิ้นที่เหลือ"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>✓ บันทึกชิ้นนี้เสร็จ (พักรอชิ้นอื่น)</span>
+                              </button>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmCompleteEntireTask(task)}
+                              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer active:scale-[0.98] border border-emerald-500"
+                              style={{ minHeight: '44px' }}
+                            >
+                              <Check className="w-4 h-4 stroke-[3]" />
+                              <span>✓ เสร็จสิ้นขั้นตอนนี้ทั้งหมด 100% (COMPLETE)</span>
+                            </button>
+                          </>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-3">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPauseModal(task.TaskID)}
+                              className="py-3.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer active:scale-[0.98]"
+                              style={{ minHeight: '48px' }}
+                            >
+                              <Pause className="w-4 h-4 fill-white" />
+                              <span>⏸ พักเวลา (PAUSE)</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleCompleteActiveParts(task, activePartsInSession)
+                              }
+                              className="py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer active:scale-[0.98]"
+                              style={{ minHeight: '48px' }}
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>✓ เสร็จสิ้นขั้นตอนนี้ทั้งหมด (COMPLETE)</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1352,6 +1417,44 @@ export const TechnicianFloorView: React.FC<TechnicianFloorViewProps> = ({
                 className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-lg transition-colors cursor-pointer"
               >
                 บันทึกสถานะพักงาน
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM COMPLETE ENTIRE TASK MODAL */}
+      {confirmCompleteEntireTask && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-hidden animate-fadeIn">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-emerald-600">
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">ยืนยันปิดจบขั้นตอนนี้ 100%</h3>
+                <p className="text-[11px] text-slate-500">ขั้นตอน: {confirmCompleteEntireTask.TaskName}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              ระบบจะทำเครื่องหมายติ๊กถูก (✓) ชิ้นส่วนทั้งหมดในขั้นตอนนึงให้เสร็จสมบูรณ์ และปรับสถานะเป็น <b>Completed</b> ถาวร (ไม่สามารถแก้ไขกลับเป็นพักงานได้อีก)
+            </p>
+
+            <div className="flex justify-end gap-2 text-xs font-bold pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmCompleteEntireTask(null)}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCompleteEntireTask100(confirmCompleteEntireTask)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm transition-colors cursor-pointer"
+              >
+                ยืนยันปิดจบ 100%
               </button>
             </div>
           </div>

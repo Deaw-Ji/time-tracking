@@ -80,9 +80,23 @@ import {
 
 type AppNavTab = 'dashboard' | 'jobs' | 'tech' | 'efficiency' | 'sheets';
 
+// Collision-proof Log ID generator combining high-precision timestamp and random token
+export function generateLogId(): string {
+  const ts = Date.now().toString(36).toUpperCase();
+  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `LOG-${ts}-${rand}`;
+}
+
 export function computeActiveSessions(timeLogs: SheetTimeLog[]): ActiveTechSession[] {
   const map: Record<string, ActiveTechSession> = {};
-  timeLogs.forEach((log) => {
+  // Strictly sort logs chronologically before computing active sessions
+  const sortedLogs = [...timeLogs].sort((a, b) => {
+    const timeA = new Date(a.Timestamp).getTime();
+    const timeB = new Date(b.Timestamp).getTime();
+    return timeA - timeB;
+  });
+
+  sortedLogs.forEach((log) => {
     const key = `${log.TaskID.trim()}__${log.TechEmail.trim().toLowerCase()}`;
     if (log.Action === 'START') {
       map[key] = {
@@ -129,6 +143,7 @@ export function sanitizeJobs(jobList: any[]): SheetJob[] {
 export default function App() {
   const [activeTab, setActiveTab] = useState<AppNavTab>('dashboard');
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(true);
+  const [isInitialFirestoreLoaded, setIsInitialFirestoreLoaded] = useState<boolean>(false);
 
   // Load initial database state from localStorage or fallback
   const [users, setUsers] = useState<SheetUser[]>(() => {
@@ -320,6 +335,7 @@ export default function App() {
       },
       onTimeLogsChange: (newLogs) => {
         setTimeLogs(newLogs);
+        setIsInitialFirestoreLoaded(true);
       },
       onCalendarChange: (newCalendar) => {
         setWorkCalendar(newCalendar);
@@ -968,6 +984,9 @@ export default function App() {
 
   // Automated Night Cutoff to Auto-Pause any active sessions running past the cutoff time (e.g. 23:00)
   const checkAndApplyNightAutoCutoff = useCallback(() => {
+    // Crucial safeguard: Never run cutoff until fresh data is synchronized from Firestore
+    if (!isInitialFirestoreLoaded) return;
+
     const cutoffEnabledCfg = settings.find((s) => s.ConfigKey === 'NIGHT_AUTO_CUTOFF_ENABLED');
     const isEnabled = !cutoffEnabledCfg || cutoffEnabledCfg.ConfigValue.trim().toUpperCase() === 'TRUE';
     if (!isEnabled) return;
@@ -993,8 +1012,15 @@ export default function App() {
     }[] = [];
 
     currentActive.forEach((sess) => {
+      const task = jobTasks.find((t) => t.TaskID === sess.TaskID);
+      // Safeguard 1: Never cutoff a task that is already Completed
+      if (!task || task.Status === 'Completed') return;
+
       const startDate = new Date(sess.StartTimestamp);
       if (isNaN(startDate.getTime())) return;
+
+      // Safeguard 2: Never cutoff sessions that started less than 15 minutes ago
+      if (currentMs - startDate.getTime() < 15 * 60 * 1000) return;
 
       const sessionCutoff = new Date(startDate);
       sessionCutoff.setHours(cutoffHour, cutoffMinute, 0, 0);
@@ -1009,15 +1035,12 @@ export default function App() {
           1,
           Math.round((targetCutoff.getTime() - startDate.getTime()) / 60000)
         );
-        const task = jobTasks.find((t) => t.TaskID === sess.TaskID);
-        if (task) {
-          sessionsToCutoff.push({
-            session: sess,
-            cutoffIso: targetCutoff.toISOString(),
-            durationMinutes,
-            task,
-          });
-        }
+        sessionsToCutoff.push({
+          session: sess,
+          cutoffIso: targetCutoff.toISOString(),
+          durationMinutes,
+          task,
+        });
       }
     });
 
@@ -1027,8 +1050,8 @@ export default function App() {
     const affectedJobIds = new Set<string>();
     const pausedTechNames: string[] = [];
 
-    sessionsToCutoff.forEach((item, idx) => {
-      const newLogId = `LOG-${String(updatedLogs.length + idx + 1).padStart(4, '0')}`;
+    sessionsToCutoff.forEach((item) => {
+      const newLogId = generateLogId();
       const note = `ระบบหยุดให้อัตโนมัติเวลา ${cutoffTimeStr} น. (${cutoffReasonBase})`;
       const autoPauseLog: SheetTimeLog = {
         LogID: newLogId,
@@ -1095,7 +1118,7 @@ export default function App() {
     showToast(
       `ระบบ Auto-Cutoff เวลา ${cutoffTimeStr} น. พักงานช่าง ${pausedTechNames.join(', ')} อัตโนมัติ (${cutoffReasonBase})`
     );
-  }, [settings, timeLogs, jobTasks, jobs, users, showToast]);
+  }, [settings, timeLogs, jobTasks, jobs, users, showToast, isInitialFirestoreLoaded]);
 
   // Periodic automatic check for night cutoff
   useEffect(() => {
@@ -1107,7 +1130,8 @@ export default function App() {
     taskId: string,
     techEmail: string,
     action: TimeLogAction,
-    note: string
+    note: string,
+    updatedChecklist?: string
   ) => {
     const cleanTech = techEmail.trim().toLowerCase();
     const nowIso = new Date().toISOString();
@@ -1126,7 +1150,7 @@ export default function App() {
         if (sess.TechEmail.toLowerCase() === cleanTech && sess.TaskID !== taskId) {
           const prevStartMs = new Date(sess.StartTimestamp).getTime();
           const prevDuration = Math.max(1, Math.round((currentMs - prevStartMs) / 60000));
-          const autoLogId = `LOG-${String(updatedLogs.length + 1).padStart(4, '0')}`;
+          const autoLogId = generateLogId();
           const autoPauseLog: SheetTimeLog = {
             LogID: autoLogId,
             TaskID: sess.TaskID,
@@ -1154,7 +1178,7 @@ export default function App() {
       }
     }
 
-    const newLogId = `LOG-${String(updatedLogs.length + 1).padStart(4, '0')}`;
+    const newLogId = generateLogId();
     const newLogEntry: SheetTimeLog = {
       LogID: newLogId,
       TaskID: taskId,
@@ -1204,6 +1228,7 @@ export default function App() {
 
       const updatedT: SheetJobTask = {
         ...t,
+        PartsChecklist: updatedChecklist !== undefined ? updatedChecklist : t.PartsChecklist,
         TotalMinutes: taskTotalMinutes,
         Status: nextStatus,
       };
