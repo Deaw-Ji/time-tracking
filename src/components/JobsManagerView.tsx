@@ -641,6 +641,14 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
             <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
               <AlertCircle className="w-4 h-4 text-amber-600" />
               <span>คำขอเข้าช่วยงานจากช่าง ({helpRequests.filter((r) => r.Status === 'Pending').length} คำขอรออนุมัติ)</span>
+              <button onClick={async () => {
+                const task = jobTasks.find(t => t.JobID === '20261006262' && t.TaskName === 'พ่นสี');
+                if (!task) { alert('Task not found'); return; }
+                const newChecklist = 'ฝากระโปรงหลัง/ฝาท้าย:todo,ประตูหน้าซ้าย:done,ประตูหน้าขวา:done,บังโคลนหน้าซ้าย:done,บังโคลนหน้าขวา:done,หลังคา:done,กระจกมองข้างซ้าย:todo,กระจกมองข้างขวา:todo,ตัวถังหลังซ้าย:todo,ตัวถังหลังขวา:todo,ประตูเลื่อนฝั่งซ้าย:todo';
+                console.log('Fixing task:', task.TaskID, 'with checklist:', newChecklist);
+                await import('../services/firestoreService').then(s => s.updateJobTaskInFirestore(task.TaskID, {PartsChecklist: newChecklist}));
+                alert('Updated ' + task.TaskID + '. Current parts checklist: ' + task.PartsChecklist);
+              }} className="bg-green-500 text-white p-1 rounded">Fix Checklist (Log)</button>
             </div>
           </div>
           <div className="space-y-2">
