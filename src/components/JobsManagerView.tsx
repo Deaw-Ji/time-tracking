@@ -939,7 +939,7 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                         StartDate: selectedJobForDetail?.DueDate || new Date().toISOString().split('T')[0],
                         DueDate: selectedJobForDetail?.DueDate || new Date().toISOString().split('T')[0],
                         StandardMinutes: masterSopStages[0]?.standardMinutes || 60,
-                        includedParts: carParts.length > 0 ? [...carParts] : ['กันชนหน้า', 'ฝากระโปรงหน้า'],
+                        includedParts: [],
                       });
                       setIsAddTaskModalOpen(true);
                     }}
@@ -1780,7 +1780,28 @@ export const JobsManagerView: React.FC<JobsManagerViewProps> = ({
                 )}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">ชิ้นส่วนที่ต้องทำในขั้นตอนนี้ (Checklist) *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    ชิ้นส่วนที่ต้องทำในขั้นตอนนี้ (เลือกแล้ว {newTask.includedParts.length} ชิ้น) *
+                  </label>
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => setNewTask({ ...newTask, includedParts: [...carParts] })}
+                      className="text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
+                    >
+                      เลือกทั้งหมด
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setNewTask({ ...newTask, includedParts: [] })}
+                      className="text-slate-500 hover:text-slate-700 font-medium cursor-pointer"
+                    >
+                      ล้างที่เลือก
+                    </button>
+                  </div>
+                </div>
                 <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-2 border border-slate-200 rounded-lg bg-slate-50">
                   {carParts.map((part) => {
                     const isIncluded = newTask.includedParts.includes(part);

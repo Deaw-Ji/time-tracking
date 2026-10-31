@@ -306,6 +306,20 @@ export async function saveJobToFirestore(job: SheetJob) {
   }
 }
 
+export async function saveJobWithTasksToFirestore(job: SheetJob, tasks: SheetJobTask[]) {
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'jobs', job.JobID), job);
+    tasks.forEach((t) => {
+      batch.set(doc(db, 'jobTasks', t.TaskID), t);
+    });
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `jobs/${job.JobID}+tasks`);
+    throw error;
+  }
+}
+
 export async function deleteJobFromFirestore(jobId: string) {
   try {
     await deleteDoc(doc(db, 'jobs', jobId));

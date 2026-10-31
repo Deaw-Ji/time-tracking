@@ -36,6 +36,7 @@ import {
   saveUserToFirestore,
   deleteUserFromFirestore,
   saveJobToFirestore,
+  saveJobWithTasksToFirestore,
   deleteJobFromFirestore,
   saveJobTaskToFirestore,
   updateJobTaskInFirestore,
@@ -85,6 +86,43 @@ export function generateLogId(): string {
   const ts = Date.now().toString(36).toUpperCase();
   const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
   return `LOG-${ts}-${rand}`;
+}
+
+// Collision-proof sequential Task ID generator
+let highestSessionTaskId = 0;
+export function generateNextTaskIds(existingTasks: SheetJobTask[], count: number): string[] {
+  let maxNum = 1000;
+  for (const t of existingTasks) {
+    if (!t?.TaskID) continue;
+    const match = t.TaskID.match(/\d+/);
+    if (match) {
+      const n = parseInt(match[0], 10);
+      if (!isNaN(n) && n > maxNum) {
+        maxNum = n;
+      }
+    }
+  }
+
+  // Ensure it never goes backwards or duplicates in the current session
+  if (highestSessionTaskId > maxNum) {
+    maxNum = highestSessionTaskId;
+  }
+
+  const existingIds = new Set(existingTasks.map((t) => t.TaskID));
+  const newIds: string[] = [];
+  let next = maxNum + 1;
+
+  while (newIds.length < count) {
+    const candidate = `TSK-${next}`;
+    if (!existingIds.has(candidate)) {
+      newIds.push(candidate);
+      existingIds.add(candidate);
+    }
+    next++;
+  }
+
+  highestSessionTaskId = next - 1;
+  return newIds;
 }
 
 export function computeActiveSessions(timeLogs: SheetTimeLog[]): ActiveTechSession[] {
@@ -597,9 +635,9 @@ export default function App() {
       Status: 'Open',
     };
 
-    const baseTaskNum = 1001 + jobTasks.length;
+    const taskIds = generateNextTaskIds(jobTasks, subtasks.length);
     const newTasks: SheetJobTask[] = subtasks.map((st, idx) => ({
-      TaskID: `TSK-${baseTaskNum + idx}`,
+      TaskID: taskIds[idx],
       JobID: newJobId,
       TaskName: st.TaskName,
       AssignedTechs: st.AssignedTechs.join(', '),
@@ -614,9 +652,12 @@ export default function App() {
     setJobs((prev) => [newJob, ...prev]);
     setJobTasks((prev) => [...newTasks, ...prev]);
 
-    saveJobToFirestore(newJob).catch((e) => console.error('Save job error:', e));
-    newTasks.forEach((t) => {
-      saveJobTaskToFirestore(t).catch((e) => console.error('Save task error:', e));
+    saveJobWithTasksToFirestore(newJob, newTasks).catch((e) => {
+      console.error('Save job with tasks batch error:', e);
+      saveJobToFirestore(newJob).catch((err) => console.error('Fallback save job error:', err));
+      newTasks.forEach((t) => {
+        saveJobTaskToFirestore(t).catch((err) => console.error('Fallback save task error:', err));
+      });
     });
 
     showToast(
@@ -636,11 +677,7 @@ export default function App() {
       PartsChecklist: string;
     }
   ) => {
-    const maxNum = jobTasks.reduce((max, t) => {
-      const num = parseInt(t.TaskID.replace('TSK-', ''), 10);
-      return isNaN(num) ? max : Math.max(max, num);
-    }, 1000);
-    const newTaskId = `TSK-${maxNum + 1}`;
+    const [newTaskId] = generateNextTaskIds(jobTasks, 1);
     const created: SheetJobTask = {
       TaskID: newTaskId,
       JobID: jobId,
